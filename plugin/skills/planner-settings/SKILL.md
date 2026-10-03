@@ -1,0 +1,173 @@
+---
+name: planner-settings
+description: Read and change the owner's active hours in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop) and dailyTaskMin (how many minutes of task time a day holds). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
+---
+
+# Planner · active hours
+
+The owner's working window: when a day may begin, when it must stop, and how much work it holds.
+One setting for every day — there are no per-weekday hours.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `dayStart` | `08:00` | the earliest a day may begin |
+| `dayEnd` | `24:00` | hard stop; nothing is placed past it (`24:00` = no fence) |
+| `dailyTaskMin` | `480` | minutes of **task time** a day holds, rests excluded |
+
+The defaults are the owner's original rules, so a planner nobody has configured behaves exactly as it
+always did.
+
+## What these do NOT change
+
+**The rest rules are not settable and never change**: a 10-minute rest between consecutive tasks, and
+a 1-hour long rest after every 4 hours of task time. So raising `dailyTaskMin` to 600 does **not**
+make a 10-hour block — it makes a third block, with long rests at 4 h and 8 h.
+
+Do not offer to change the rest lengths or the 4-hour block; they are not exposed, by design.
+
+## Calling the API
+
+Base URL `http://127.0.0.1:4317` by default. Loopback only, no auth, JSON. Send
+`content-type: application/json`.
+
+**Finding the port.** It is `PLANNER_API_PORT`, default 4317:
+
+1. `.data/runtime.json` in the repo, written at every `npm start` / `npm run dev`:
+   `{ "apiUrl": "http://127.0.0.1:4417", … }` — the *last* start, so confirm with `GET <apiUrl>/health`.
+2. `PLANNER_API_PORT` in the environment or the repo's `.env` (the environment wins).
+3. The `[preflight] API: http://127.0.0.1:<port>` line `npm start` prints.
+4. The default, 4317. 5. Otherwise, ask the user.
+
+**Always start with `GET /health`.** Connection refused (curl exit 7) on every candidate port means
+the service is down: ask the user to run `npm start` from the repo root. Don't set a short `-m`.
+
+**Use the Bash tool with `curl -s`**, on every OS including Windows (Git Bash). Do **not** pass a JSON
+body to `curl.exe` from Windows PowerShell 5.1: it strips the inner quotes. PowerShell fallback:
+
+```powershell
+Invoke-RestMethod -Method Patch -Uri 'http://127.0.0.1:4317/settings' -ContentType 'application/json' -Body (@{ dayEnd = '20:00' } | ConvertTo-Json)
+```
+
+## Endpoints
+
+| Endpoint | Body | Effect |
+|---|---|---|
+| `GET /settings` | — | The hours, the defaults, and **what the window actually grants**. |
+| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin }` | Validates, stores, rebuilds today and the future, queues the calendar sync. |
+
+`PATCH` accepts `dryRun: true` in the body or `?dryRun=true`, which validates and writes nothing.
+`GET /health` carries `activeHours` as well, so one call tells you how the day is shaped.
+
+```sh
+curl -s http://127.0.0.1:4317/settings
+
+# "my day starts at 10"
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"dayStart":"10:00"}'
+
+# "nothing after 8pm"
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"dayEnd":"20:00"}'
+
+# "I want 10 hours a day" - needs the window open late enough, see below
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"dailyTaskMin":600,"dayEnd":"22:30"}'
+
+# "I only have evenings"
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"dayStart":"18:00","dayEnd":"23:00","dailyTaskMin":240}'
+```
+
+## The one thing to get right: the clock cost of work is stepped
+
+**Read this before telling the owner a window will give them what they asked for.**
+
+Every 4 hours of task time buys an hour of long rest. So the clock a day needs does not grow smoothly
+with the work:
+
+| `dailyTaskMin` | long rests | a day from 08:00 ends about |
+|---|---|---|
+| 480 (8 h) | 1 | 18:40 |
+| 510 (8.5 h) | 2 | 20:20 |
+| 600 (10 h) | 2 | 22:20 |
+
+Thirty more minutes of work costs **1 h 40** of clock. The consequence: **asking for 10 hours inside
+an 08:00–20:00 window silently grants 8**, because the window cannot hold the second long rest.
+
+So whenever the owner raises `dailyTaskMin`, **read `effective` back and tell them the real number**:
+
+```json
+{ "activeHours": { "dayStart": "08:00", "dayEnd": "20:00", "dailyTaskMin": 600 },
+  "effective": { "dailyTaskMin": 480, "boundBy": "window", "lastEnd": "…T18:40:00+01:00" } }
+```
+
+- `effective.dailyTaskMin` — what the coming full days actually hold.
+- `effective.boundBy` — `"window"` means the fence is the limit (widen `dayEnd` to get more work),
+  `"budget"` means `dailyTaskMin` is, and the window has room to spare.
+
+If `boundBy` is `"window"` and the owner wanted more work, say so plainly and offer the `dayEnd` that
+would deliver it, rather than reporting the request as if it had been granted.
+
+Beyond roughly 11 hours of task time no day can hold the result at all. The setting is still accepted
+— it is a budget, not a promise — but say that it will not be reached.
+
+## Field rules
+
+| Field | Rule |
+|---|---|
+| `dayStart` | `"HH:MM"`. Must be before `dayEnd`. |
+| `dayEnd` | `"HH:MM"`, up to `"24:00"` (midnight, meaning no fence). Must be after `dayStart`. |
+| `dailyTaskMin` | A whole number of **minutes**, 15 to 1440. Hours × 60 — `"10 hours"` is `600`. A numeric string is accepted. |
+
+A window must lie inside one calendar day. **`22:00`–`02:00` is refused**: every key in the plan
+carries the calendar date, so a day spanning two dates would break all of them. If the owner studies
+through midnight, the honest answer is that the planner cannot express it, not a workaround.
+
+A PATCH is a subset: keys you don't send keep their current value.
+
+## What happens to the plan
+
+- **Today is rebuilt too**, not just the future — unlike a task edit. A setting about *when the day
+  runs* would look broken if it waited until tomorrow. `regenerated` includes today.
+- **Work that no longer fits moves to the next day.** It is never dropped. A narrower window means the
+  same tasks reach further out, so say that rather than implying work was lost.
+- **The fence cannot un-run this morning.** Narrowing `dayEnd` to 09:00 at 3pm leaves today's morning
+  items where they are — past and in-progress items always keep their times. From tomorrow on the
+  fence is absolute. Don't report this as a bug.
+- **A calendar sync is queued** automatically, so Google Calendar follows.
+- `changed: false` with an empty `regenerated` means the patch asked for what was already set.
+
+## How to work
+
+1. **`GET /settings` first**, so you can tell the owner what is currently set and report the change as
+   a before/after rather than an assertion.
+2. **Convert hours to minutes yourself** and confirm the number back: "10 hours a day — that's
+   `dailyTaskMin: 600`".
+3. **Dry-run anything you inferred rather than were told**, and any change that both narrows the
+   window and raises the budget.
+4. **Commit, then read `effective` and report the real outcome** — the dates in `regenerated`, the
+   task time a day will actually hold, and whether the window or the budget is the limit.
+5. If the owner's intent needs per-weekday hours ("weekends are different"), say plainly that the
+   planner has one window for all days, and offer the nearest thing: a window that suits the days
+   that matter most, or skipping tasks / a days shift for specific days
+   (`study-planner:planner-schedule`).
+6. **Never edit `.data/` or a task file to change the hours.** This setting is not in the Markdown.
+
+## Errors
+
+Always `{"error":{"code","message","hint"}}` — show the `hint`.
+
+| Code (HTTP) | Meaning | What to do |
+|---|---|---|
+| connection refused | The service is down. | Ask the user to run `npm start`. |
+| `INVALID_INPUT` (400) | An end at or before the start, a window that wraps midnight, a window too short for one task (15 min), a `dailyTaskMin` that is not a whole number from 15 to 1440, a clock time that is not `HH:MM`, or an unknown key. | Fix the value. **Nothing was stored** — the previous hours are still in force. |
+| `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`. | Call from the CLI on 127.0.0.1. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The setting and the re-plan did succeed.** | Say so, then → `study-planner:planner-calendar-sync`. |
+| `INTERNAL` (500) | Unexpected failure. | Report it with the request. |
+
+## Where to go next
+
+- Mark things done, shift the plan, pull today earlier → `study-planner:planner-schedule`
+- Change a task's own duration (not the day's budget) → `study-planner:planner-update`
+- Step away for a while → `study-planner:planner-pause-resume`
+- See what the plan looks like now → `study-planner:planner-read`

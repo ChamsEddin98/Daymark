@@ -1,0 +1,4 @@
+{ "name": "@planner/daemon", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "start": "tsx src/main.ts", "test": "vitest run" },
+  "dependencies": { "@planner/core": "*", "@planner/store": "*", "@planner/calendar": "*", "node-notifier": "^10.0.1", "dotenv": "^17.2.3" },
+  "devDependencies": { "@types/node-notifier": "^8.0.5", "vitest": "^3.2.4", "tsx": "^4.20.6", "@types/node": "^24.5.2", "typescript": "^5.9.3" } }

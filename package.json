@@ -1,0 +1,36 @@
+{
+  "name": "daymark",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Daymark: a local study-schedule service. Markdown task files become a timed daily plan with fixed rest rules, synced to Google Calendar, shown in a local web UI, announced by desktop notifications.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs --dev",
+    "preflight": "node scripts/preflight.mjs",
+    "auth": "npm run auth -w @planner/calendar --",
+    "test": "npm test --workspaces --if-present",
+    "tasks:check": "npm run check --workspace @planner/core",
+    "api": "npm start -w @planner/api",
+    "daemon": "npm start -w @planner/daemon",
+    "web": "npm start -w @planner/web",
+    "build:web": "npm run build -w @planner/web"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.1",
+    "axe-core": "^4.10.3",
+    "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

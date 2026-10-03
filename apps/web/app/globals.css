@@ -1,0 +1,203 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark mode follows the system. `.dark` is kept as an escape hatch for forcing it. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+
+  --color-track-bcg: var(--track-bcg);
+  --color-track-salesforce: var(--track-salesforce);
+  --color-track-anthropic: var(--track-anthropic);
+  --color-track-lessons: var(--track-lessons);
+  --color-track-portfolio: var(--track-portfolio);
+  --color-track-apply: var(--track-apply);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* Type scale: 12 / 13 / 14 / 16 / 22 */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.75rem;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/*
+ * Palette: warm neutrals, one accent (indigo) for "now", focus and primary actions, and six track
+ * hues. Every value used as text is >= 4.5:1 on --background and --surface in its mode
+ * (checked by tests/a11y.spec.ts with axe).
+ */
+:root {
+  --background: #fafaf9;
+  --surface: #ffffff;
+  --foreground: #1c1b1a;
+  --muted: #f1f0ee;
+  --muted-foreground: #62605c;
+  --border: #e7e5e2;
+  --input: #dcdad6;
+  --accent: #4338ca;
+  --accent-foreground: #ffffff;
+  --accent-soft: rgb(67 56 202 / 0.06);
+  --ring: #4338ca;
+
+  --primary: var(--foreground);
+  --primary-foreground: #ffffff;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --destructive: #b42318;
+  --warning: #945400;
+
+  --track-bcg: #16794a;
+  --track-salesforce: #0b64b3;
+  --track-anthropic: #ad4a22;
+  --track-lessons: #7440c0;
+  --track-portfolio: #855700;
+  --track-apply: #ad2958;
+
+  --rest-stripe: rgb(28 27 26 / 0.035);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #121211;
+    --surface: #1a1a19;
+    --foreground: #ecebe9;
+    --muted: #242422;
+    --muted-foreground: #a3a19c;
+    --border: #2a2a28;
+    --input: #3a3936;
+    --accent: #9ea4ff;
+    --accent-foreground: #14133a;
+    --accent-soft: rgb(158 164 255 / 0.08);
+    --ring: #9ea4ff;
+    --primary: var(--foreground);
+    --primary-foreground: #121211;
+    --destructive: #ff8a7a;
+    --warning: #f0b35a;
+
+    --track-bcg: #4cc285;
+    --track-salesforce: #6cb2f2;
+    --track-anthropic: #ef8f68;
+    --track-lessons: #b99af5;
+    --track-portfolio: #e2b04b;
+    --track-apply: #f283ad;
+
+    --rest-stripe: rgb(255 255 255 / 0.03);
+    color-scheme: dark;
+  }
+}
+
+.dark {
+  --background: #121211;
+  --surface: #1a1a19;
+  --foreground: #ecebe9;
+  --muted: #242422;
+  --muted-foreground: #a3a19c;
+  --border: #2a2a28;
+  --input: #3a3936;
+  --accent: #9ea4ff;
+  --accent-foreground: #14133a;
+  --accent-soft: rgb(158 164 255 / 0.08);
+  --ring: #9ea4ff;
+  --primary: var(--foreground);
+  --primary-foreground: #121211;
+  --destructive: #ff8a7a;
+  --warning: #f0b35a;
+  --track-bcg: #4cc285;
+  --track-salesforce: #6cb2f2;
+  --track-anthropic: #ef8f68;
+  --track-lessons: #b99af5;
+  --track-portfolio: #e2b04b;
+  --track-apply: #f283ad;
+  --rest-stripe: rgb(255 255 255 / 0.03);
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply font-sans antialiased;
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "cv11", "ss01";
+  }
+  body {
+    @apply bg-background text-foreground text-base;
+    overflow-x: clip;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .rest-band {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--rest-stripe) 0 6px,
+      transparent 6px 12px
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

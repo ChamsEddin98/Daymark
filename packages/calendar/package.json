@@ -1,0 +1,23 @@
+{
+  "name": "@planner/calendar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "auth": "tsx src/cli/auth.ts"
+  },
+  "dependencies": {
+    "@planner/core": "*",
+    "google-auth-library": "^10.3.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "tsx": "^4.20.6",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.3"
+  }
+}

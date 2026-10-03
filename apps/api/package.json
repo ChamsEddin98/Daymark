@@ -1,0 +1,4 @@
+{ "name": "@planner/api", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "start": "tsx src/main.ts", "dev": "tsx watch src/main.ts", "test": "vitest run" },
+  "dependencies": { "@planner/core": "*", "@planner/store": "*", "@planner/calendar": "*", "fastify": "^5.6.1", "@fastify/cors": "^11.1.0", "dotenv": "^17.2.3" },
+  "devDependencies": { "vitest": "^3.2.4", "tsx": "^4.20.6", "@types/node": "^24.5.2", "typescript": "^5.9.3" } }

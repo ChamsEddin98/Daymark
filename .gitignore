@@ -1,0 +1,29 @@
+# dependencies and build output
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# secrets and local state (the Google refresh token and the service-account key live in .data/)
+.env
+.env.*
+!.env.example
+.data/
+# A service-account key is a private key that never expires. .data/ already covers the place it
+# belongs, but these patterns catch a copy dropped anywhere else in the tree by a browser download.
+google-service-account*.json
+*-service-account*.json
+service-account*.json
+*.sa.json
+
+# logs and test artefacts
+*.log
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+coverage/
+
+# scratch dirs used by agents / verification runs
+.critic-tmp/
+.p6-tmp/
