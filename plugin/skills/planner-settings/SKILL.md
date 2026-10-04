@@ -1,6 +1,6 @@
 ---
 name: planner-settings
-description: Read and change the owner's active hours in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop), dailyTaskMin (how many minutes of task time a day holds) and onMissed (whether a task whose time passed re-times the day or only notifies). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours", "stop moving my tasks around", "don't re-time my day automatically", "what did I miss today". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
+description: Read and change the owner's active hours in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop), dailyTaskMin (how many minutes of task time a day holds) and onMissed (whether a task whose time passed re-times the day or only notifies). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours", "stop moving my tasks around", "don't re-time my day automatically", "what did I miss today". Also owns calendarReminders, which decides whether Google Calendar notifies and how long before a task — use for "I don't get notifications on my phone", "remind me 10 minutes before each task", "the calendar never alerts me", "turn off the calendar reminders". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
 ---
 
 # Planner · active hours
@@ -53,8 +53,8 @@ Invoke-RestMethod -Method Patch -Uri 'http://127.0.0.1:4317/settings' -ContentTy
 
 | Endpoint | Body | Effect |
 |---|---|---|
-| `GET /settings` | — | The hours, the defaults, and **what the window actually grants**. |
-| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin }` | Validates, stores, rebuilds today and the future, queues the calendar sync. |
+| `GET /settings` | — | The hours, the defaults, **what the window actually grants**, and `calendarReminders`. |
+| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed, calendarReminders }` | Validates, stores, rebuilds today and the future, queues the calendar sync. `calendarReminders` rebuilds nothing. |
 
 `PATCH` accepts `dryRun: true` in the body or `?dryRun=true`, which validates and writes nothing.
 `GET /health` carries `activeHours` as well, so one call tells you how the day is shaped.
@@ -77,7 +77,39 @@ curl -s -X PATCH http://127.0.0.1:4317/settings \
 # "I only have evenings"
 curl -s -X PATCH http://127.0.0.1:4317/settings \
   -H "content-type: application/json" -d '{"dayStart":"18:00","dayEnd":"23:00","dailyTaskMin":240}'
+
+# "remind me on my phone 10 minutes before each task"
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"calendarReminders":10}'
 ```
+
+## Calendar reminders
+
+`calendarReminders` lives on this endpoint but it is **not** an active hour: it changes how the plan
+announces itself, never when it runs, so `regenerated` is always `[]` for it. A sync is still queued,
+because every event has to be rewritten.
+
+| Value | Effect |
+|---|---|
+| `"off"` *(default)* | Google never notifies. The daemon's desktop toasts are the only alerts. |
+| a number `0`–`40320` | a popup that many minutes before each task starts — **this is what reaches a phone** |
+| `"inherit"` | defers to that calendar's own event notifications, which a secondary calendar has **none** of until the owner adds one |
+
+Use it when the owner says any of: "I don't get notifications on my phone", "remind me before each
+task", "notify me 15 minutes early", "the calendar is silent", "turn off the calendar alerts".
+
+What to tell them:
+
+- The silence on the phone is deliberate, not a bug — the daemon already notifies at the desk, and a
+  Google reminder on top would double every toast there.
+- Setting it patches **every event in the window, once**; the sync after that reports no changes.
+  Report the first sync's `patched` count so a large number does not look alarming.
+- A reminder they added by hand in the Google UI is wiped by the next patch of that event. This
+  setting is the only durable way.
+- They still need the Google Calendar app signed in on the phone with OS notifications allowed. If it
+  stays silent after a sync, that is the thing to check — not this setting.
+- Prefer a number over `"inherit"` unless they say they have set up event notifications on that
+  calendar themselves.
 
 ## The one thing to get right: the clock cost of work is stepped
 

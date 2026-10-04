@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toEvent, type PlanItem } from "../src/index.ts";
+import { remindersFor, toEvent, type PlanItem } from "../src/index.ts";
 
 const base: PlanItem = {
   key: "2026-09-28|bcg-a1|2",
@@ -77,5 +77,58 @@ describe("toEvent", () => {
 
   it("refuses rest items", () => {
     expect(() => toEvent({ ...base, kind: "rest", title: "Rest" }, "UTC")).toThrow(/only task items/);
+  });
+});
+
+/**
+ * Reminders are what makes the plan announce itself on a phone. The default stays `off` because the
+ * daemon already fires native toasts on the machine running the planner; a Google reminder on top
+ * would double every one of them.
+ */
+describe("remindersFor", () => {
+  it("off means Google stays silent", () => {
+    expect(remindersFor("off")).toEqual({ useDefault: false, overrides: [] });
+  });
+
+  it("inherit hands the decision to the calendar's own notification settings", () => {
+    expect(remindersFor("inherit")).toEqual({ useDefault: true, overrides: [] });
+  });
+
+  it("a number is a popup that many minutes before the start", () => {
+    expect(remindersFor(10)).toEqual({ useDefault: false, overrides: [{ method: "popup", minutes: 10 }] });
+    // 0 is "at the start", not "unset", so it has to survive the falsy check.
+    expect(remindersFor(0)).toEqual({ useDefault: false, overrides: [{ method: "popup", minutes: 0 }] });
+    expect(remindersFor(40_320)).toEqual({ useDefault: false, overrides: [{ method: "popup", minutes: 40_320 }] });
+  });
+
+  it("falls back to off rather than throwing, because a bad setting must not stop a sync", () => {
+    const off = { useDefault: false, overrides: [] };
+    for (const bad of [-1, 40_321, 10.5, Number.NaN, "10", null, undefined, {}] as never[]) {
+      expect(remindersFor(bad)).toEqual(off);
+    }
+  });
+});
+
+describe("toEvent reminders", () => {
+  it("defaults to off when no policy is passed, which is what the planner always wrote", () => {
+    expect(toEvent(base, "Africa/Tunis").reminders).toEqual({ useDefault: false, overrides: [] });
+  });
+
+  it("carries the policy it is given", () => {
+    expect(toEvent(base, "Africa/Tunis", 15).reminders).toEqual({ useDefault: false, overrides: [{ method: "popup", minutes: 15 }] });
+    expect(toEvent(base, "Africa/Tunis", "inherit").reminders).toEqual({ useDefault: true, overrides: [] });
+  });
+
+  /**
+   * The hash has to move with the policy. It is the only thing `needsPatch` compares, so if the
+   * hash ignored reminders, turning them on would never reach the events that already exist.
+   */
+  it("changes the hash, so existing events get patched", () => {
+    const h = (r?: Parameters<typeof toEvent>[2]) => toEvent(base, "Africa/Tunis", r).extendedProperties.private.plannerHash;
+    expect(h("off")).toBe(h());
+    expect(h(10)).not.toBe(h("off"));
+    expect(h("inherit")).not.toBe(h("off"));
+    expect(h(10)).not.toBe(h(15));
+    expect(h(10)).toBe(h(10));
   });
 });

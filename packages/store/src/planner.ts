@@ -68,6 +68,10 @@ const META_OFF_UNTIL = "off_until";
 const META_RESUME_AT = "resume_at";
 /** The owner's active hours, as JSON. Absent = the defaults (08:00, 24:00, 480). */
 const META_ACTIVE_HOURS = "active_hours";
+/** `off` | `inherit` | a whole number of minutes before the start. Absent = `off`. */
+const META_CALENDAR_REMINDERS = "calendar_reminders";
+/** A reminder may be set up to four weeks ahead, which is Google's own limit. */
+const MAX_REMINDER_MIN = 40_320;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MIN = 60_000;
 
@@ -302,6 +306,54 @@ export class PlanService {
       next.dayStart !== current.dayStart || next.dayEnd !== current.dayEnd || next.dailyTaskMin !== current.dailyTaskMin || next.onMissed !== current.onMissed;
     if (changed) this.store.setSetting(META_ACTIVE_HOURS, JSON.stringify(next));
     return { hours: next, changed };
+  }
+
+  // ------------------------------------------------- calendar reminders
+
+  /**
+   * What `reminders` the calendar events carry: `"off"` (the default), `"inherit"`, or a whole
+   * number of minutes before the start.
+   *
+   * It is kept apart from the active hours on purpose. The active hours describe the *shape of the
+   * day* and every one of them changes the plan; this changes nothing about the plan and only how
+   * Google is told about it. Folding it in would mean a `ScheduleConfig` carrying a field no layout
+   * depends on, which is the mistake `onMissed` already has to be stripped out to avoid.
+   *
+   * Read live, never cached, so the API and the daemon cannot sync with different policies.
+   */
+  calendarReminders(): "off" | "inherit" | number {
+    const raw = this.store.getMeta(META_CALENDAR_REMINDERS);
+    if (!raw) return "off";
+    if (raw === "off" || raw === "inherit") return raw;
+    const n = Number(raw);
+    // A stored value that no longer parses falls back rather than breaking every sync.
+    return Number.isInteger(n) && n >= 0 && n <= MAX_REMINDER_MIN ? n : "off";
+  }
+
+  /**
+   * Validate a candidate without storing it, so `?dryRun` runs exactly the check the real call
+   * runs - a preview that passes cannot be followed by a commit that throws.
+   *
+   * A numeric string is accepted and coerced, because a setting that arrives from a form field or a
+   * query parameter is a string and refusing `"10"` would be a trap rather than a safeguard.
+   */
+  validateCalendarReminders(value: unknown): "off" | "inherit" | number {
+    const next = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+    if (next === "off" || next === "inherit") return next;
+    if (typeof next === "number" && Number.isInteger(next) && next >= 0 && next <= MAX_REMINDER_MIN) return next;
+    throw new PlannerError(
+      "INVALID_INPUT",
+      `calendarReminders must be "off", "inherit", or a whole number of minutes from 0 to ${MAX_REMINDER_MIN}; got ${JSON.stringify(value)}`,
+      '"off" lets the daemon do the notifying, "inherit" follows the calendar\'s own notification settings, and a number is minutes before the start - the one that reaches a phone.',
+    );
+  }
+
+  /** Validate and store it. Returns the new value and whether it changed. */
+  setCalendarReminders(value: unknown): { calendarReminders: "off" | "inherit" | number; changed: boolean } {
+    const ok = this.validateCalendarReminders(value);
+    const changed = ok !== this.calendarReminders();
+    if (changed) this.store.setSetting(META_CALENDAR_REMINDERS, String(ok));
+    return { calendarReminders: ok, changed };
   }
 
   /**
@@ -995,6 +1047,21 @@ export class PlanService {
   }
 
   /**
+   * Drop rests left at the end of a date's timeline. A rest exists to separate two pieces of work,
+   * so one with nothing after it is not a rest - it is a leftover. Rests never reach the calendar,
+   * so this is about what the daily view says, which is why it runs on the stored day rather than
+   * being left to the next rebuild: an emptied day has no rebuild coming.
+   *
+   * Callers are already inside a transaction.
+   */
+  private trimTrailingRests(date: string): void {
+    const items = this.store.getDay(date).items;
+    const remove: string[] = [];
+    for (let i = items.length - 1; i >= 0 && items[i]!.kind === "rest"; i--) remove.push(items[i]!.key);
+    if (remove.length) this.store.applyChanges({ remove });
+  }
+
+  /**
    * Status of the task an item stands for. A daily task changes for that date only. For a split task
    * only the last part changes the task status; earlier parts are marked on the item only.
    * Today is never reshuffled; days after today are regenerated, and a future item whose task is now
@@ -1023,6 +1090,10 @@ export class PlanService {
         this.store.applyChanges({ remove: [item.key] });
         this.store.setStatus(this.keyOf(item), "pending", this.nowIso());
         const regenerated = this.replanFrom([past ? this.today() : item.date]);
+        // Taking the task away can leave the rest that followed it with nothing to rest between.
+        // A day off that still showed "Rest" would be reporting work that is not there, so the same
+        // trailing-rest rule every rebuild applies is applied here too.
+        this.trimTrailingRests(item.date);
         const back =
           this.store.itemsForTask(uid, "timeline").find((i) => i.date === item.date && i.status === "pending") ??
           this.store.itemsForTask(uid, "timeline").find((i) => i.date >= this.today() && i.status === "pending") ??

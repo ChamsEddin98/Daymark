@@ -65,6 +65,14 @@ Tests use vitest; the web UI uses Playwright (`npm test -w @planner/web`). Clock
   fence is enforced in `packages/core`'s `fitDay`, which bisects for the largest budget the window
   holds; it replaced the midnight retry loop that used to live in `regenerateToday`, so there is one
   definition of where a day has to end. See docs/PLAN.md, "Active hours".
+- **`calendarReminders`** (`meta.calendar_reminders`, default `"off"`) shares the `/settings`
+  endpoint with the active hours but is deliberately **not** one of them and never reaches a
+  `ScheduleConfig`: it decides how the day is *announced*, not when it runs, so it regenerates
+  nothing and only queues a sync. `"off"` writes no overrides, a number writes a popup that many
+  minutes before the start (the only thing that reaches a phone - the daemon's toasts reach the desk
+  only), `"inherit"` sets `useDefault`. It is part of the event body and therefore of `plannerHash`,
+  which is what makes a change patch the events that already exist instead of only new ones. Read
+  live on every sync, like the active hours, because the API and the daemon hold separate services.
 - **Unfinished work carries itself forward.** The rollover deletes pending items on past dates and
   re-places the work at the front of the next day. A daily session is held only when it is **acted
   on** (done or skipped), never because its date went by, so an ignored day slides a capped series

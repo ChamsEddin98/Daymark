@@ -137,6 +137,44 @@ hour of long rest. Going from 8 h to 8.5 h of work costs 1 h 40 of clock, so ask
 (`effective.dailyTaskMin`) and which setting is the limit (`effective.boundBy`), and the UI shows the
 same thing rather than echoing the request. Details in [docs/PLAN.md](docs/PLAN.md), "Active hours".
 
+## Calendar reminders
+
+Daymark notifies you twice over, and the two reach different places:
+
+- **The daemon** fires native desktop notifications at every task and rest boundary. They are
+  immediate and detailed, but they only reach the machine running the planner.
+- **Google Calendar** can notify on its own, which is what reaches your phone. This is off by
+  default, so a fresh install is silent on the phone *by design* — the daemon is already covering the
+  desk, and a Google reminder on top would double every toast.
+
+`calendarReminders` is what turns the second one on:
+
+```sh
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"calendarReminders":10}'
+```
+
+| Value | What the events carry | Use it when |
+|---|---|---|
+| `"off"` *(default)* | `useDefault: false`, no overrides — Google never notifies | you only work at the machine running the planner |
+| *a number* | a popup that many minutes before the start (`0`–`40320`) | **you want the plan on your phone.** `10` is a good start; `0` means "at the start" |
+| `"inherit"` | `useDefault: true` — the event obeys that calendar's own *Event notifications* | you would rather manage it in Google Calendar |
+
+A few things that are easy to get wrong:
+
+- **`"inherit"` is usually silent.** A secondary calendar — which is what the planner syncs into —
+  has *no* default event notifications until you add one in Google Calendar's settings for that
+  calendar. Pick a number instead unless you have set those up.
+- **Don't set reminders by hand in the Google UI.** The sync owns the event body, so a manual
+  per-event reminder is overwritten the next time that event is patched. This setting is the only
+  durable way.
+- **Changing it rewrites every event, once.** The policy is part of the event body, so the stored
+  hash moves and the next sync patches the whole window; the sync after that has nothing to do. The
+  plan itself does not move — unlike the active hours, this changes only how the day is *announced*,
+  so nothing is re-timed and no work you are in the middle of is disturbed.
+- **For the phone you still need the Google Calendar app** signed in to the account the calendar
+  belongs to, with notifications allowed by the OS.
+
 ## Use from Claude Code
 
 The repo ships a Claude Code plugin in `plugin/`. Claude Code is only a client, so the service must
@@ -154,7 +192,7 @@ which operation is wanted and sends Claude Code to the one child that owns the e
 | `planner-update` | `PATCH /plans/:track`, `PATCH /tasks/:uid` |
 | `planner-delete` | `DELETE /plans/:track`, `DELETE /tasks/:uid`, and the backups that undo them |
 | `planner-pause-resume` | `POST /plan/pause`, `POST /plan/resume` |
-| `planner-settings` | `GET`/`PATCH /settings` — the active hours |
+| `planner-settings` | `GET`/`PATCH /settings` — the active hours and the calendar reminders |
 | `planner-calendar-sync` | `POST /sync`, `/sync/status`, `/calendar/events`, and the Google setup |
 | `planner-markdown-sync` | How the `.md` write-back works: diffs, `dryRun`, snapshots, restores |
 

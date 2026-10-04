@@ -1,6 +1,6 @@
 ---
 name: planner-calendar-sync
-description: Check and drive the Google Calendar sync of the owner's study planner through the local service at http://127.0.0.1:4317 — GET /sync/status for the last result and any error, GET /calendar/events for what is actually in the calendar, and POST /sync to sync a window now. Also covers one-time OAuth with npm run auth and the CALENDAR_NOT_AUTHORIZED (503) and CALENDAR_ERROR (502) answers. Use for "is my calendar up to date", "sync my calendar", "the events are wrong or missing", "why isn't it in Google Calendar", "re-authorise Google".
+description: Check and drive the Google Calendar sync of the owner's study planner through the local service at http://127.0.0.1:4317 — GET /sync/status for the last result and any error, GET /calendar/events for what is actually in the calendar, and POST /sync to sync a window now. Also covers one-time OAuth with npm run auth and the CALENDAR_NOT_AUTHORIZED (503) and CALENDAR_ERROR (502) answers. Use for "is my calendar up to date", "sync my calendar", "the events are wrong or missing", "why isn't it in Google Calendar", "re-authorise Google". If the calendar is correct but never notifies, that is the calendarReminders setting, owned by planner-settings, not a sync fault.
 ---
 
 # Planner · Google Calendar sync
@@ -117,6 +117,22 @@ curl -s -X POST http://127.0.0.1:4317/sync -H "content-type: application/json" \
    `plannerKey` was created outside the planner and the planner will not manage it.
 5. Tell the user what you found; **don't repair Google Calendar by hand.**
 
+## "the calendar doesn't notify me"
+
+This is **not** a sync fault, so don't diagnose it as one. Events sync correctly and still stay
+silent, because the planner writes `reminders: { useDefault: false, overrides: [] }` by default: the
+daemon already fires native desktop toasts at every boundary, and a Google reminder on top would
+double each one on that machine.
+
+The fix is the `calendarReminders` setting, owned by `study-planner:planner-settings` — route there
+rather than touching the sync. In short: a number of minutes writes a popup that long before each
+task, which is what reaches a **phone**; `"inherit"` defers to that calendar's own event
+notifications, which a secondary calendar has none of by default. Setting it patches every event in
+the window once, so expect one large `patched` count and nothing after.
+
+Never tell the owner to add reminders by hand in the Google UI: the sync owns the event body, so the
+next patch of that event wipes them.
+
 ## Errors
 
 Always `{"error":{"code","message","hint"}}` — show the `hint`.
@@ -140,3 +156,4 @@ behind. Always say that first; the user has not lost anything.
 - Add / change / remove a task or plan → `study-planner:planner-create`,
   `study-planner:planner-update`, `study-planner:planner-delete`
 - Reads of the plan to compare against → `study-planner:planner-read`
+- The calendar is right but silent (`calendarReminders`) → `study-planner:planner-settings`

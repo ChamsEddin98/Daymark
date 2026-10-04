@@ -162,6 +162,29 @@ describe("E · a days shift is never undone by a re-plan", () => {
     expect(regen.body.clearedDaysOff).toContain(TODAY);
     expect(tasksOf(await day(t, TODAY)).some((i: any) => ms(i.start) >= ms(`${TODAY}T09:00:00+02:00`))).toBe(true);
   });
+
+  /**
+   * Emptying today has to leave it actually empty. A days shift keeps whatever already started, so
+   * the first task and the rest behind it stay; undoing that task takes the task away and used to
+   * leave the rest standing alone - a day off whose daily view still said "Rest", separating nothing
+   * from nothing. An emptied day has no rebuild coming, so the trim cannot wait for one.
+   */
+  it("undoing the last task of a day off leaves no rest behind", async () => {
+    // 08:45 is inside the first rest, so the first task has run and the rest is current.
+    const t = await realApi({ now: `${TODAY}T08:45:00+02:00` });
+    const first = tasksOf(await day(t, TODAY))[0];
+    expect((await t.post("/plan/shift", { amount: 1, unit: "days" })).status).toBe(200);
+
+    const off = await day(t, TODAY);
+    expect(tasksOf(off).map((i: any) => i.taskUid), "the task that already started stays").toEqual([first.taskUid]);
+    expect(off.items.at(-1)!.kind, "and the rest behind it with it").toBe("rest");
+
+    expect((await t.post(`/items/${enc(first.key)}/status`, { status: "pending" })).status).toBe(200);
+    const after = await day(t, TODAY);
+    expect(after.items, "the day off is empty, rest included").toEqual([]);
+    // The work was not lost: it leads the next working day.
+    expect(tasksOf(await day(t, nextDay(TODAY)))[0].taskUid).toBe(first.taskUid);
+  });
 });
 
 describe("F · regenerate {from: today}", () => {

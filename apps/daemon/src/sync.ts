@@ -113,7 +113,7 @@ export class SyncRetrier {
           stateGet: () => store.getCalendarId(),
           stateSet: (id) => store.setCalendarId(id),
         },
-        this.o.calendarOptions ?? {},
+        { ...(this.o.calendarOptions ?? {}), reminders: service.calendarReminders() },
       );
       const failed = r.errors.length > 0;
       store.updateSyncState({

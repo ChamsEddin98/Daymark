@@ -1,7 +1,7 @@
 import { ensureCalendar, type EnsureCalendarInput } from "./calendar.ts";
 import { CalendarApiError, CalendarNotFoundError, NotAuthorizedError } from "./errors.ts";
 import { call, seg, type CalendarOptions, type RequestClient } from "./http.ts";
-import { PLANNER_APP, toEvent, type CalendarEventBody, type PlanItem } from "./mapping.ts";
+import { PLANNER_APP, toEvent, type CalendarEventBody, type PlanItem, type ReminderPolicy } from "./mapping.ts";
 
 export interface SyncWindow {
   /** Inclusive lower bound (RFC 3339 with offset, or Date). Events ending after this are in the window. */
@@ -51,6 +51,15 @@ export interface ReconcileResult {
 export interface ReconcileOptions extends CalendarOptions {
   /** Time zone written on events. Default: the system zone. */
   timeZone?: string;
+  /**
+   * What `reminders` every event carries. Default `"off"`, which is what the planner has always
+   * written: the daemon notifies, so Google does not. Set it to reach a phone.
+   *
+   * It is part of the event body, so changing it changes `plannerHash` and the next sync patches
+   * every event once - which is exactly what has to happen for the new setting to take effect on
+   * events that already exist.
+   */
+  reminders?: ReminderPolicy;
   /** Page size for events.list (Google max 2500, default 250). */
   pageSize?: number;
 }
@@ -184,7 +193,7 @@ export async function reconcile(
   const desired = new Map<string, CalendarEventBody>();
   for (const item of items) {
     if (item.kind !== "task" || !inWindow(item, from, to) || desired.has(item.key)) continue;
-    desired.set(item.key, toEvent(item, timeZone));
+    desired.set(item.key, toEvent(item, timeZone, opts?.reminders ?? "off"));
   }
 
   const existing = await listPlannerRaw(client, calendarId, window, opts);

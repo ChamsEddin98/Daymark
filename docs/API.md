@@ -40,7 +40,7 @@ Every error looks like this:
 | `GET /plans` | `{ plans: [{ track, path, title, kind, priority, tasks, startsAfter, defaultDurationMin }] }`. One row per task file. |
 | `GET /plans/:track` | One plan: its front matter, its `tasks` and its raw `markdown`. |
 | `GET /backups?track=` | `{ backups: [{ name, track, at, bytes, path }] }`, newest first. The snapshots the write-back takes. |
-| `GET /settings` | The owner's active hours and what they actually grant: `{ activeHours: { dayStart, dayEnd, dailyTaskMin, onMissed }, defaults, timeZone, effective: { dailyTaskMin, boundBy, lastEnd } }` |
+| `GET /settings` | The owner's active hours and what they actually grant, plus the calendar reminder policy: `{ activeHours: { dayStart, dayEnd, dailyTaskMin, onMissed }, calendarReminders, defaults, timeZone, effective: { dailyTaskMin, boundBy, lastEnd } }` |
 | `GET /calendar/events?from&to` | The events read back from Google: `[{ eventId, plannerKey, summary, start, end, sourceUrl }]` |
 | `GET /sync/status` | `{ authorized, calendarId, lastSyncAt, lastResult: { inserted, patched, deleted, unchanged }, pending, lastError }` |
 | `GET /notifications?limit=50` | The recent notifications the daemon fired: `[{ at, type, itemKey, title }]`. `type` is one of `task_start`, `task_end`, `rest_start`, `rest_end`, `resume` (a one-off "Now: …" toast when the daemon starts mid-item) or `missed` (a task whose slot went by while it was still pending). |
@@ -57,7 +57,7 @@ Every error looks like this:
 | `POST /plan/pause` | — | Freezes the plan at this instant, recorded to the millisecond. Nothing moves. Returns `{ paused: { since } }`. |
 | `POST /plan/resume` | — | Measures `now - since` in milliseconds and shifts the plan forward by exactly that, then clears the pause. Returns `{ pausedSec, moved, endOfDay, day }`. |
 | `POST /plan/regenerate` | `{ from?: date }` | Rebuilds the plan from the given date (default: tomorrow) from task files, status and progress. `from` = today rebuilds the rest of today too. The only call that may clear days off; it reports them in `clearedDaysOff`. |
-| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed }` | The owner's active hours: when the day may start, when it must stop, and how much task time it holds. Validates, stores, rebuilds **today and the future**, queues a sync. Takes `dryRun`. Returns `{ activeHours, regenerated, changed, sync }`. |
+| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed, calendarReminders }` | The owner's active hours: when the day may start, when it must stop, and how much task time it holds. Validates, stores, rebuilds **today and the future**, queues a sync. `calendarReminders` (`"off"` \| `"inherit"` \| minutes) is accepted in the same call but rebuilds nothing - it only changes how the events announce themselves. Takes `dryRun`. Returns `{ activeHours, calendarReminders, regenerated, changed, sync }`. |
 | `POST /reload` | — | Re-reads `resources/**/*.md`, then regenerates the future days. Returns `{ tasks, errors: [] }`, or a 422. |
 | `POST /sync` | `{ from?, to? }` | Syncs the window now (default: today up to the end of the horizon). Returns the sync result. Every mutation above also queues a sync on its own, debounced by 2 s. |
 
@@ -363,6 +363,28 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
   - The setting lives in SQLite (`meta.active_hours`) and is read live on every use, so the API and
     the daemon cannot disagree. A stored value that no longer parses or validates falls back to the
     defaults rather than failing every read.
+- **Calendar reminders** (`GET`/`PATCH /settings`, key `calendarReminders`). What Google is told to
+  remind about. It sits on the same endpoint as the active hours and may be sent in the same call,
+  but it is a different *kind* of setting and behaves differently:
+  - `"off"` (the default) writes `reminders: { useDefault: false, overrides: [] }`, so Google never
+    notifies. The daemon already fires native toasts at every boundary on the machine running the
+    planner; a Google reminder on top would double each one. A number of minutes from `0` to `40320`
+    (four weeks, Google's own limit) writes a popup that far before the start — the value that
+    reaches a **phone**, which the daemon's toasts cannot. `"inherit"` writes `useDefault: true`,
+    deferring to that calendar's own event notifications; note that a secondary calendar has none
+    until the owner adds one, so `"inherit"` is silent by default. A numeric string is accepted.
+  - **It does not move the plan.** `regenerated` is always `[]` when only this key changes, because
+    the policy decides how the day is *announced*, never when it runs. It is not a scheduling input
+    and never reaches `ScheduleConfig`. A sync is still queued, since the events must be rewritten.
+  - **Changing it patches the whole window, once.** The policy is part of the event body, so it is
+    covered by `plannerHash`; the next sync reports `patched` for every event in the window and the
+    one after it reports none. This is what makes the setting reach events that already exist rather
+    than only new ones.
+  - A reminder added by hand in the Google UI is **not** preserved: `patchBody` clears what it does
+    not set, so the next patch of that event removes it. This setting is the only durable way.
+  - Stored in SQLite (`meta.calendar_reminders`), read live on every sync, so the API and the daemon
+    cannot sync with different policies. A stored value that no longer parses falls back to `"off"`
+    rather than breaking every sync. Anything else is `400 INVALID_INPUT` with nothing stored.
 - `POST /reload` returns `{ tasks: number, files: number, skipped: string[], errors: [], regenerated }`.
 - **Write-back** (`POST`/`PATCH`/`DELETE` on `/plans` and `/tasks`, and `POST /backups/:name/restore`).
   All of it is implemented in `apps/api/src/taskfiles.ts` over the surgical editor in
@@ -459,7 +481,7 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
     exists.
 - **SSE payloads.** `status`: `{ key, taskUid, date, status }` (by item) or `{ taskUid, date, status, keys }`
   (by uid). `plan`: `{ dates, reason }` with reason `status`, `shift`, `pause`, `resume`, `regenerate`,
-  `reload`, `rollover`, `settings` (the active hours changed) or `external` (a write by another
+  `reload`, `rollover`, `settings` (the active hours or the calendar reminders changed) or `external` (a write by another
   process, such as the daemon, seen by polling the store once a second). `pause` and `resume` also carry `paused` (the new state, `null` after a resume).
   `sync`: `{ ok, lastSyncAt, lastResult, lastError, pending, lastAttemptAt }`. `notification`:
   `{ at, type, itemKey, title }`, relayed from the store. The heartbeat is an SSE comment line.

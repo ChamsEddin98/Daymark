@@ -115,7 +115,7 @@ export class SyncManager {
         ...(this.calendarId ? { calendarId: this.calendarId } : {}),
         stateGet: () => this.store.getCalendarId(),
         stateSet: (id) => this.store.setCalendarId(id),
-      }, this.calendarOptions);
+      }, { ...this.calendarOptions, reminders: this.service.calendarReminders() });
       const counts = { inserted: r.inserted, patched: r.patched, deleted: r.deleted, unchanged: r.unchanged };
       const failed = r.errors.length > 0;
       const state = this.store.updateSyncState({

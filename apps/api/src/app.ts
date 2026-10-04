@@ -401,6 +401,11 @@ export async function createApi(opts: ApiOptions = {}): Promise<Api> {
       activeHours: hours,
       defaults: DEFAULT_ACTIVE_HOURS,
       timeZone,
+      /**
+       * What Google is told to remind about. Separate from the active hours because it changes
+       * nothing about the plan - only how the calendar announces it.
+       */
+      calendarReminders: service.calendarReminders(),
       effective: {
         /** Task minutes the coming full days actually hold; `null` until a day is materialized. */
         dailyTaskMin: full.length ? Math.max(...full.map(taskMin)) : null,
@@ -544,17 +549,41 @@ export async function createApi(opts: ApiOptions = {}): Promise<Api> {
    */
   app.patch("/settings", async (req) => {
     const { input, dryRun } = writeBack(req);
+    // `calendarReminders` is handled apart from the active hours: it never moves the plan, so it
+    // regenerates nothing and only queues a sync. The two may be sent in one call.
+    const { calendarReminders: wantReminders, ...hoursPatch } = input;
+    const touchesHours = Object.keys(hoursPatch).length > 0;
+
     if (dryRun) {
-      // Validated, nothing stored: the same check the real call makes, so a preview that passes
+      // Validated, nothing stored: the same checks the real call makes, so a preview that passes
       // cannot be followed by a commit that fails.
-      const hours = service.validateActiveHours(input as never);
-      return { activeHours: hours, regenerated: service.wouldReplan(service.today()), dryRun: true, sync: "skipped" };
+      const hours = touchesHours ? service.validateActiveHours(hoursPatch as never) : service.activeHours();
+      const reminders = wantReminders === undefined ? service.calendarReminders() : service.validateCalendarReminders(wantReminders);
+      return {
+        activeHours: hours,
+        calendarReminders: reminders,
+        regenerated: touchesHours ? service.wouldReplan(service.today()) : [],
+        dryRun: true,
+        sync: "skipped",
+      };
     }
-    const { hours, changed } = service.setActiveHours(input as never);
-    if (!changed) return { activeHours: hours, regenerated: [], changed: false, sync: "skipped" };
-    const regenerated = service.replan(service.today());
-    mutated(regenerated, "settings");
-    return { activeHours: hours, regenerated, changed: true, sync: "queued" };
+
+    let changed = false;
+    let reminders = service.calendarReminders();
+    if (wantReminders !== undefined) {
+      const r = service.setCalendarReminders(wantReminders);
+      reminders = r.calendarReminders;
+      changed ||= r.changed;
+    }
+    const { hours, changed: hoursChanged } = touchesHours ? service.setActiveHours(hoursPatch as never) : { hours: service.activeHours(), changed: false };
+    changed ||= hoursChanged;
+    if (!changed) return { activeHours: hours, calendarReminders: reminders, regenerated: [], changed: false, sync: "skipped" };
+
+    // Only the hours move the plan. A reminder change is part of the event body, so the hash shifts
+    // and the next sync patches every event once - which is how it reaches events that already exist.
+    const regenerated = hoursChanged ? service.replan(service.today()) : [];
+    mutated(regenerated, "settings", { calendarReminders: reminders });
+    return { activeHours: hours, calendarReminders: reminders, regenerated, changed: true, sync: "queued" };
   });
 
   const shiftBody = (req: FastifyRequest) => {

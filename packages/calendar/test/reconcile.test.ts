@@ -157,6 +157,39 @@ describe("reconcile", () => {
     expect(again.inserted + again.patched + again.deleted).toBe(0);
   });
 
+  /**
+   * The point of the setting: it has to reach the events that are already in the calendar. The plan
+   * has not moved, so only the reminder policy can be what makes the patch happen - and the second
+   * run proves the new value is what got stored rather than the event flapping on every sync.
+   */
+  it("turning reminders on patches existing events, then settles", async () => {
+    const items = makeItems(9);
+    await reconcile(client, calendarId, items, WINDOW, opts);
+    for (const e of fake.liveEvents(calendarId)) expect(e.reminders).toEqual({ useDefault: false, overrides: [] });
+
+    const withReminder = { ...opts, reminders: 10 as const };
+    const r = await reconcile(client, calendarId, items, WINDOW, withReminder);
+    expect(r).toEqual({ inserted: 0, patched: 9, deleted: 0, unchanged: 0, errors: [] });
+    for (const e of fake.liveEvents(calendarId)) {
+      expect(e.reminders).toEqual({ useDefault: false, overrides: [{ method: "popup", minutes: 10 }] });
+    }
+
+    const again = await reconcile(client, calendarId, items, WINDOW, withReminder);
+    expect(again).toEqual({ inserted: 0, patched: 0, deleted: 0, unchanged: 9, errors: [] });
+
+    // And back off again, so the setting is reversible rather than one-way.
+    expect((await reconcile(client, calendarId, items, WINDOW, opts)).patched).toBe(9);
+    for (const e of fake.liveEvents(calendarId)) expect(e.reminders).toEqual({ useDefault: false, overrides: [] });
+  });
+
+  it("omitting the policy keeps the silent default, so the sync is unchanged for everyone else", async () => {
+    const items = makeItems(4);
+    await reconcile(client, calendarId, items, WINDOW, { timeZone: TZ, retry: noSleep, reminders: "off" });
+    const r = await reconcile(client, calendarId, items, WINDOW, opts);
+    expect(r.patched).toBe(0);
+    expect(r.unchanged).toBe(4);
+  });
+
   it("deletes events whose item is no longer planned", async () => {
     const items = makeItems(5);
     await reconcile(client, calendarId, items, WINDOW, opts);

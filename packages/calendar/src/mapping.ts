@@ -70,7 +70,30 @@ export const wholeSecond = (iso: string, timeZone: string): string => toIso(Math
  * " (part i/n)" when split). Only task items should be passed; rests throw. Times are floored to
  * whole seconds (see `wholeSecond`).
  */
-export function toEvent(item: PlanItem, timeZone: string): CalendarEventBody {
+/**
+ * How a planner event fills Google's `reminders`.
+ *
+ * - `"off"` (the default): `useDefault: false` with no overrides, so Google never notifies. The
+ *   planner's own daemon already fires four native toasts per task - start, end, rest start, rest
+ *   end - and a Google reminder on top would double every one of them on the machine running it.
+ * - `"inherit"`: `useDefault: true`, so the event obeys whatever that calendar's own "Event
+ *   notifications" say. Note that a freshly created secondary calendar has **none** by default, so
+ *   this is silent until you add one in Google Calendar.
+ * - a number: minutes before the start, as a popup. This is the one that reaches a phone without any
+ *   further setup, which is the whole reason it exists - the daemon's toasts only reach the desk.
+ */
+export type ReminderPolicy = "off" | "inherit" | number;
+
+/** The `reminders` field for a policy. Invalid input falls back to `off` rather than throwing: a bad
+ *  setting must never be able to stop a sync. */
+export function remindersFor(policy: ReminderPolicy): CalendarEventBody["reminders"] {
+  if (policy === "inherit") return { useDefault: true, overrides: [] };
+  if (typeof policy === "number" && Number.isInteger(policy) && policy >= 0 && policy <= 40_320)
+    return { useDefault: false, overrides: [{ method: "popup", minutes: policy }] };
+  return { useDefault: false, overrides: [] };
+}
+
+export function toEvent(item: PlanItem, timeZone: string, reminders: ReminderPolicy = "off"): CalendarEventBody {
   if (item.kind !== "task") throw new Error(`toEvent: only task items become events (got ${item.kind} ${item.key})`);
   const primary = item.links?.[0];
   const description = buildDescription(item);
@@ -80,7 +103,7 @@ export function toEvent(item: PlanItem, timeZone: string): CalendarEventBody {
     start: { dateTime: wholeSecond(item.start, timeZone), timeZone },
     end: { dateTime: wholeSecond(item.end, timeZone), timeZone },
     ...(primary ? { source: { title: primary.label, url: primary.url } } : {}),
-    reminders: { useDefault: false, overrides: [] },
+    reminders: remindersFor(reminders),
     transparency: "opaque",
   };
   return {
