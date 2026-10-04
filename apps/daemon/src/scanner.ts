@@ -31,7 +31,7 @@
  *   outlasts it would swallow its end for good. It is fired once, at the resume instant.
  */
 import { addDays, localDate, toIso, zonedMs, type PlanItem } from "@planner/core";
-import type { Clock, NotificationRecord, NotificationType, PlannerStore } from "@planner/store";
+import type { BoundaryType, Clock, NotificationRecord, PlannerStore } from "@planner/store";
 import { buildResume, buildToast, hhmm, recordTitle, type BoundaryEvent } from "./format.ts";
 import { deliver, errMsg, type FiredNotification, type NotificationSink } from "./sinks.ts";
 
@@ -68,7 +68,7 @@ export class BoundaryScanner {
     for (const item of this.o.store.getItemsOverlapping(fromMs, toMs + 1)) {
       const task = item.kind === "task";
       if (task && item.status !== "pending") continue;
-      const edges: [NotificationType, number][] = [
+      const edges: [BoundaryType, number][] = [
         [task ? "task_start" : "rest_start", Date.parse(item.start)],
         [task ? "task_end" : "rest_end", Date.parse(item.end)],
       ];
@@ -87,7 +87,7 @@ export class BoundaryScanner {
       }
     }
     // end before start at the same instant, so records read task_end, rest_start
-    const order = (t: NotificationType) => (t.endsWith("_end") ? 0 : 1);
+    const order = (t: BoundaryType) => (t.endsWith("_end") ? 0 : 1);
     return out.sort((a, b) => a.atMs - b.atMs || order(a.type) - order(b.type));
   }
 
@@ -125,7 +125,7 @@ export class BoundaryScanner {
     };
   }
 
-  private recordedTitle(itemKey: string, type: NotificationType): string | undefined {
+  private recordedTitle(itemKey: string, type: BoundaryType): string | undefined {
     const r = this.o.store.db.prepare("SELECT title FROM notifications WHERE item_key = ? AND type = ?").get(itemKey, type) as { title?: string } | undefined;
     return r?.title === undefined ? undefined : String(r.title);
   }

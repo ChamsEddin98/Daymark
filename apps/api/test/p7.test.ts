@@ -343,8 +343,15 @@ describe("round 2 · days off, held sessions, holes, history and part labels", (
     for (const uid of ["lessons/DAILY", "portfolio/DAILY"]) {
       const view = (await t2.get(`/tasks/${enc(uid)}`)).body;
       expect(view.items.filter((i: any) => i.date < "2026-10-02" && i.status === "pending"), `${uid} keeps stale history`).toEqual([]);
-      expect(view.progress.sessionsHeld ?? 0, `${uid} sessions were harvested before the purge`).toBeGreaterThanOrEqual(uid === "lessons/DAILY" ? 3 : 0);
+      // A session is spent by *acting* on it, not by its date going by. Three days passed with these
+      // untouched, so none of them was consumed: the series slides and finishes three days later.
+      // (This replaced the opposite assertion - "sessions were harvested before the purge" - which
+      // made a day you ignored cost you a lesson for ever.)
+      expect(view.progress.sessionsHeld ?? 0, `${uid} spent a session on a day that was never done`).toBe(0);
     }
+    // And the work really is still coming: the capped track still has its full allowance ahead.
+    const lessons = (await t2.get(`/tasks/${enc("lessons/DAILY")}`)).body;
+    expect(lessons.scheduledOn.length, "the lessons series continues after three ignored days").toBeGreaterThan(0);
   });
 
   it("5 · part labels follow the timeline: never part 2/2 above part 1/2", async () => {

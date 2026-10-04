@@ -40,10 +40,10 @@ Every error looks like this:
 | `GET /plans` | `{ plans: [{ track, path, title, kind, priority, tasks, startsAfter, defaultDurationMin }] }`. One row per task file. |
 | `GET /plans/:track` | One plan: its front matter, its `tasks` and its raw `markdown`. |
 | `GET /backups?track=` | `{ backups: [{ name, track, at, bytes, path }] }`, newest first. The snapshots the write-back takes. |
-| `GET /settings` | The owner's active hours and what they actually grant: `{ activeHours: { dayStart, dayEnd, dailyTaskMin }, defaults, timeZone, effective: { dailyTaskMin, boundBy, lastEnd } }` |
+| `GET /settings` | The owner's active hours and what they actually grant: `{ activeHours: { dayStart, dayEnd, dailyTaskMin, onMissed }, defaults, timeZone, effective: { dailyTaskMin, boundBy, lastEnd } }` |
 | `GET /calendar/events?from&to` | The events read back from Google: `[{ eventId, plannerKey, summary, start, end, sourceUrl }]` |
 | `GET /sync/status` | `{ authorized, calendarId, lastSyncAt, lastResult: { inserted, patched, deleted, unchanged }, pending, lastError }` |
-| `GET /notifications?limit=50` | The recent notifications the daemon fired: `[{ at, type, itemKey, title }]`. `type` is one of `task_start`, `task_end`, `rest_start`, `rest_end`, or `resume` (a one-off "Now: …" toast when the daemon starts mid-item). |
+| `GET /notifications?limit=50` | The recent notifications the daemon fired: `[{ at, type, itemKey, title }]`. `type` is one of `task_start`, `task_end`, `rest_start`, `rest_end`, `resume` (a one-off "Now: …" toast when the daemon starts mid-item) or `missed` (a task whose slot went by while it was still pending). |
 | `GET /events` | A Server-Sent Events stream. Event names are `plan` (with `{ dates: [...] }`), `status`, `sync` and `notification`. A heartbeat is sent every 15 s. |
 
 ## Write
@@ -57,7 +57,7 @@ Every error looks like this:
 | `POST /plan/pause` | — | Freezes the plan at this instant, recorded to the millisecond. Nothing moves. Returns `{ paused: { since } }`. |
 | `POST /plan/resume` | — | Measures `now - since` in milliseconds and shifts the plan forward by exactly that, then clears the pause. Returns `{ pausedSec, moved, endOfDay, day }`. |
 | `POST /plan/regenerate` | `{ from?: date }` | Rebuilds the plan from the given date (default: tomorrow) from task files, status and progress. `from` = today rebuilds the rest of today too. The only call that may clear days off; it reports them in `clearedDaysOff`. |
-| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin }` | The owner's active hours: when the day may start, when it must stop, and how much task time it holds. Validates, stores, rebuilds **today and the future**, queues a sync. Takes `dryRun`. Returns `{ activeHours, regenerated, changed, sync }`. |
+| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed }` | The owner's active hours: when the day may start, when it must stop, and how much task time it holds. Validates, stores, rebuilds **today and the future**, queues a sync. Takes `dryRun`. Returns `{ activeHours, regenerated, changed, sync }`. |
 | `POST /reload` | — | Re-reads `resources/**/*.md`, then regenerates the future days. Returns `{ tasks, errors: [] }`, or a 422. |
 | `POST /sync` | `{ from?, to? }` | Syncs the window now (default: today up to the end of the horizon). Returns the sync result. Every mutation above also queues a sync on its own, debounced by 2 s. |
 
@@ -127,8 +127,11 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
 - **Undo.** `{ "status": "pending" }` on an item that is still on the timeline flips its status and gives the
   task's minutes back. On a `checked` item, on any item dated before today, or on one dated inside a day off
   (a date the owner pushed past holds no work to do), it removes the item (a past item's status is never
-  rewritten) and re-plans the task: the rest of today when the change touches today or
-  the past, otherwise from tomorrow - the whole future is rebuilt, because the task's remaining minutes grew.
+  rewritten) and re-plans the task **from today**, whatever date the undone item sat on - the whole future
+  is rebuilt, because the task's remaining minutes grew, and today is included because those freed minutes
+  may belong to a higher-priority prep track than whatever is still scheduled for the rest of the day.
+  Hard rule 7 (the prep slot belongs to the lowest-priority track with pending tasks) has to hold at every
+  instant, not only from tomorrow. Today's past and in-progress items keep their times either way.
   The answer is `{ item, regenerated, replanned: true }`,
   where `item` is the task's new pending timeline item (on that date if there was room, otherwise the next one),
   or `null` if it no longer fits the horizon.
@@ -153,14 +156,21 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
   - `POST /tasks/:uid/status` → `done` sets `doneMin = durationMin`, `skipped` leaves the minutes alone,
     `pending` clears the progress (`doneMin = 0`, `partsDone = 0`) and re-plans the task.
 - **Lesson sessions (`occurrences`)** count **sessions**, never a window of dates (`sessions_held`). A session
-  is held on a date that ran (it is in the past, whatever its status) or whose status is done or skipped. A
+  is held when it is **acted on** - its status is done or skipped - and *not* merely because its date went
+  by. A day that passed with the session untouched consumed nothing: it slides to the next day and the
+  series finishes later, the same promise one-off tasks keep. Only `skipped` spends a session without
+  doing it, which is what keeps skipping a decision rather than a synonym for forgetting. A
   daily task with `occurrences: N` is planned until sessions held plus sessions planned equal `N`, so a shift
   can neither lose one nor add one, and no counter has to be maintained. A session a shift takes off the plan
   is simply not held, and comes back at the end of the plan.
-- **History is immutable.** Only done and skipped items stay on a past date. Every pending item before today -
-  a task, a daily slot or a rest - never happened: it is deleted, a one-off task's remaining minutes are
-  re-placed with fresh part numbers, and a daily slot's session is recorded first, so it is never handed out
-  twice (this is the midnight rollover, and it is also what a regeneration does). An undo never writes
+- **History is immutable, and unfinished work carries forward by itself.** Only done and skipped items
+  stay on a past date. Every pending item before today - a task, a daily slot or a rest - never happened:
+  it is deleted and the work comes back, at the front of the next day's queue. A one-off task's remaining
+  minutes are re-placed with fresh part numbers; a daily slot's session returns to the pool, because it
+  was never held. This is the midnight rollover, and it is also what a regeneration does.
+  **Nothing is lost and nothing is capped by a calendar:** a day nobody touched costs the plan a day, not
+  the owner the work, and the horizon is a rolling window rather than a programme end date, so the plan
+  simply reaches further out. `skipped` remains the one way to spend a task without doing it. An undo never writes
   `pending` onto a past item - it removes that item instead.
 - **Part labels follow the timeline.** The pieces of a split task are numbered 1..n in the order they are
   planned, across the whole plan (a checked piece included). Marking a later piece done can pull the remainder
@@ -316,6 +326,20 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
   - `dayStart` (default `08:00`), `dayEnd` (default `24:00`, meaning no fence beyond the calendar
     day) and `dailyTaskMin` (default `480`, minutes of task time with rests excluded). The defaults
     reproduce the original hard rules exactly.
+  - **`onMissed`** (default `reflow`) decides what happens when a task's slot goes by while it is
+    still pending:
+    - `reflow` — the work is taken off the past, the rest of the day is laid out again from now, and
+      a `missed` notification says where it went. A late start slides the day instead of stranding
+      the task.
+    - `notify` — nothing is touched; the notification says the task is still pending and names the
+      choices (do it, skip it, or let it roll over tonight).
+
+    Either way the work is never lost: whatever is still pending at midnight carries to the next day.
+    The policy is **read live**, so changing it takes effect on the next tick without a restart, and
+    it is not a scheduling input - it never reaches `ScheduleConfig`, because no layout depends on it.
+    Nothing is treated as missed while the plan is paused: a slot going by is what a pause means.
+    The reflow is the **daemon's** job, so it needs `npm start` (or the daemon) running; without it
+    the midnight rollover still carries the work, which is the behaviour that predates this setting.
   - **The rest rules never change.** A long rest still comes after every 4 h of task time, so a
     budget of 600 makes a third block rather than a longer one.
   - **Whichever binds first wins**, and the clock cost of work is **stepped**: crossing 8 h of task

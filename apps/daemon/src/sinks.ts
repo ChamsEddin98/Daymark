@@ -10,8 +10,8 @@ import type { ToastContent } from "./format.ts";
 
 export interface FiredNotification {
   toast: ToastContent;
-  /** One record per boundary (as stored), plus the boundary instant. */
-  records: (Omit<NotificationRecord, "type"> & { type: NotificationRecord["type"] | "resume"; due: string })[];
+  /** One record per notice (as stored), plus the instant it was due. */
+  records: (NotificationRecord & { due: string })[];
   /** Recorded but not shown: only sinks with `acceptsSilent` get it (the log). */
   silent?: boolean;
 }

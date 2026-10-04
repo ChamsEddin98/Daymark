@@ -61,7 +61,7 @@ const isDaily = (uid?: string) => !!uid && uid.endsWith("/DAILY");
 
 // ---- active hours (the owner's working window). The mock does not re-plan; it stores the setting,
 // validates it the way the real API does, and reports an `effective` figure a test can pin.
-const DEFAULT_HOURS = { dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480 };
+const DEFAULT_HOURS = { dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480, onMissed: "reflow" as "reflow" | "notify" };
 let activeHours = { ...DEFAULT_HOURS };
 let effectiveOverride: { dailyTaskMin: number | null; boundBy: "window" | "budget"; lastEnd: string | null } | null = null;
 
@@ -80,6 +80,7 @@ function checkHours(h: typeof DEFAULT_HOURS): string | null {
   if (end - start < 15) return `the active window ${h.dayStart}-${h.dayEnd} is ${end - start} min, too short for a task of 15 min`;
   if (!Number.isInteger(h.dailyTaskMin) || h.dailyTaskMin < 15 || h.dailyTaskMin > 1440)
     return `dailyTaskMin must be a whole number of minutes from 15 to 1440; got ${String(h.dailyTaskMin)}`;
+  if (h.onMissed !== "reflow" && h.onMissed !== "notify") return `onMissed must be one of reflow, notify; got ${JSON.stringify(h.onMissed)}`;
   return null;
 }
 

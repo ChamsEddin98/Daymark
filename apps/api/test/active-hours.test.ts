@@ -27,7 +27,7 @@ describe("GET /settings", () => {
     t = await makeApi();
     const r = await t.get("/settings");
     expect(r.status).toBe(200);
-    expect(r.body.activeHours).toEqual({ dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480 });
+    expect(r.body.activeHours).toEqual({ dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480, onMissed: "reflow" });
     expect(r.body.defaults).toEqual(DEFAULT_ACTIVE_HOURS);
     expect(r.body.timeZone).toBe(TZ);
     // /health carries them too, so one call is enough to know how the day is shaped.
@@ -40,7 +40,7 @@ describe("GET /settings", () => {
     // second hour-long rest and there is no room for it.
     expect((await t.patch("/settings", { dayEnd: "20:00", dailyTaskMin: 600 })).status).toBe(200);
     const r = await t.get("/settings");
-    expect(r.body.activeHours).toEqual({ dayStart: "08:00", dayEnd: "20:00", dailyTaskMin: 600 });
+    expect(r.body.activeHours).toMatchObject({ dayStart: "08:00", dayEnd: "20:00", dailyTaskMin: 600 });
     expect(r.body.effective.dailyTaskMin).toBeLessThan(600);
     expect(r.body.effective.boundBy).toBe("window");
     expect(hhmm(r.body.effective.lastEnd)).not.toBe("");
@@ -115,7 +115,7 @@ describe("PATCH /settings", () => {
     const r = await t.patch("/settings?dryRun=true", { dayStart: "11:00", dayEnd: "19:00", dailyTaskMin: 420 });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body).toMatchObject({ dryRun: true, sync: "skipped" });
-    expect(r.body.activeHours).toEqual({ dayStart: "11:00", dayEnd: "19:00", dailyTaskMin: 420 });
+    expect(r.body.activeHours).toMatchObject({ dayStart: "11:00", dayEnd: "19:00", dailyTaskMin: 420 });
     expect(r.body.regenerated.length).toBeGreaterThan(0);
     // Nothing stored, nothing moved.
     expect((await t.get("/settings")).body.activeHours).toEqual(DEFAULT_ACTIVE_HOURS);
@@ -139,6 +139,8 @@ describe("PATCH /settings", () => {
       ["a start that is not a string", { dayStart: 8 }, /must be a string/],
       ["an unknown setting", { dayBegin: "08:00" }, /unknown setting/],
       ["a typo for a real setting", { dailyTaskMinutes: 600 }, /unknown setting/],
+      ["an unknown missed policy", { onMissed: "ignore" }, /onMissed must be one of/],
+      ["a missed policy that is not a string", { onMissed: 1 }, /onMissed must be one of/],
     ];
     for (const [label, patch, message] of bad) {
       const e = expectError(await t.patch("/settings", patch), 400, "INVALID_INPUT");
@@ -146,6 +148,18 @@ describe("PATCH /settings", () => {
       expect(e.hint.length, label).toBeGreaterThan(0);
       expect((await t.get("/settings")).body.activeHours, label).toEqual(DEFAULT_ACTIVE_HOURS);
     }
+  });
+
+  it("onMissed switches between reflowing a missed task and only saying so", async () => {
+    t = await makeApi();
+    expect((await t.get("/settings")).body.activeHours.onMissed).toBe("reflow");
+    const r = await t.patch("/settings", { onMissed: "notify" });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body).toMatchObject({ changed: true });
+    expect((await t.get("/settings")).body.activeHours.onMissed).toBe("notify");
+    // It is a policy, not a layout input, so it must not move anything by itself.
+    expect((await t.patch("/settings", { onMissed: "notify" })).body.changed).toBe(false);
+    expect((await t.get("/health")).body.activeHours.onMissed).toBe("notify");
   });
 
   it("a number sent as a string from a form is accepted", async () => {
@@ -178,7 +192,7 @@ describe("the setting is durable and shared", () => {
     expect((await t.patch("/settings", { dayStart: "07:30", dayEnd: "19:00", dailyTaskMin: 420 })).status).toBe(200);
     await t.close();
     t = await makeApi({ dir });
-    expect((await t.get("/settings")).body.activeHours).toEqual({ dayStart: "07:30", dayEnd: "19:00", dailyTaskMin: 420 });
+    expect((await t.get("/settings")).body.activeHours).toMatchObject({ dayStart: "07:30", dayEnd: "19:00", dailyTaskMin: 420 });
     expect(hhmm((await t.get("/plan?days=3")).body.days[1].items[0].start)).toBe("07:30");
   });
 

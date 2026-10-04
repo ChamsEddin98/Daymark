@@ -9,6 +9,7 @@
 import {
   DEFAULT_ACTIVE_HOURS,
   MAX_SHIFT_MS,
+  MISSED_POLICIES,
   SLOT_RANK,
   checkActiveHours,
   addDays,
@@ -187,6 +188,8 @@ export class PlanService {
   readonly horizon: number;
   private _files: TaskFile[] = [];
   private byUid = new Map<string, Task>();
+  /** Items the last `regenerateToday(true)` took off the timeline, for `reflowToday` to report. */
+  private lastReclaimed: PlanItem[] = [];
 
   constructor(opts: PlanServiceOptions) {
     this.store = opts.store;
@@ -243,6 +246,7 @@ export class PlanService {
       }
     }
     const hours = { ...DEFAULT_ACTIVE_HOURS, ...parsed };
+    if (!MISSED_POLICIES.includes(hours.onMissed)) return { ...DEFAULT_ACTIVE_HOURS };
     try {
       checkActiveHours(hours);
     } catch {
@@ -272,6 +276,12 @@ export class PlanService {
     if (typeof next.dailyTaskMin === "string" && /^\d+$/.test(next.dailyTaskMin)) next.dailyTaskMin = Number(next.dailyTaskMin);
     for (const k of ["dayStart", "dayEnd"] as const)
       if (typeof next[k] !== "string") throw new PlannerError("INVALID_INPUT", `${k} must be a string "HH:MM"; got ${JSON.stringify(next[k])}`, 'For example "08:00".');
+    if (!MISSED_POLICIES.includes(next.onMissed))
+      throw new PlannerError(
+        "INVALID_INPUT",
+        `onMissed must be one of ${MISSED_POLICIES.join(", ")}; got ${JSON.stringify(next.onMissed)}`,
+        '"reflow" lays the rest of the day out again from now when a task is missed; "notify" changes nothing and only tells you.',
+      );
     try {
       checkActiveHours(next);
     } catch (e) {
@@ -288,14 +298,21 @@ export class PlanService {
   setActiveHours(patch: Partial<ActiveHours>): { hours: ActiveHours; changed: boolean } {
     const current = this.activeHours();
     const next = this.validateActiveHours(patch);
-    const changed = next.dayStart !== current.dayStart || next.dayEnd !== current.dayEnd || next.dailyTaskMin !== current.dailyTaskMin;
+    const changed =
+      next.dayStart !== current.dayStart || next.dayEnd !== current.dayEnd || next.dailyTaskMin !== current.dailyTaskMin || next.onMissed !== current.onMissed;
     if (changed) this.store.setSetting(META_ACTIVE_HOURS, JSON.stringify(next));
     return { hours: next, changed };
   }
 
-  /** The scheduler config for every call: the planner's zone plus the owner's active hours. */
+  /**
+   * The scheduler config for every call: the planner's zone plus the owner's active hours. `onMissed`
+   * is deliberately left out - it decides whether the planner *reacts* to a missed task, which is not
+   * something the generator knows or should know. Passing it through would make `resolveConfig` carry
+   * a field no layout depends on.
+   */
   config(): Partial<ScheduleConfig> {
-    return { timeZone: this.timeZone, ...this.activeHours() };
+    const { onMissed: _onMissed, ...hours } = this.activeHours();
+    return { timeZone: this.timeZone, ...hours };
   }
 
   nowMs(): number {
@@ -444,10 +461,14 @@ export class PlanService {
    * Recorded durably, so no later shift or rebuild can lose it or hand out a second one.
    */
   private harvestSessions(): void {
-    const today = this.today();
     for (const t of this.byUid.values()) {
       if (t.repeat !== "daily") continue;
-      for (const i of this.store.itemsForTask(t.uid)) if (i.date < today || i.status !== "pending") this.store.holdSession(t.uid, i.date);
+      // A session is held when it was **acted on** - done, or skipped - and not merely because its
+      // date went by. A day that passed with the lesson untouched did not consume one of the
+      // `occurrences`: the session slides to the next day and the series finishes later, which is
+      // the same promise one-off tasks already keep. Only `skipped` spends a session without doing
+      // it, which is what makes skipping a decision rather than a synonym for forgetting.
+      for (const i of this.store.itemsForTask(t.uid)) if (i.status !== "pending") this.store.holdSession(t.uid, i.date);
     }
   }
 
@@ -461,13 +482,22 @@ export class PlanService {
     this.store.deletePendingBefore(this.today());
   }
 
-  /** Sessions held before `from`: a recorded date, or a date the stored plan holds one on. */
+  /**
+   * Sessions held before `from`: a recorded date, or a date the stored plan holds a **closed** one on.
+   * A pending item on a past date is a missed session, not a held one - `purgePast` is about to
+   * delete it and the session returns to the pool, so counting it here would spend it twice over.
+   */
   private sessionsHeldFor(from: string): Map<string, number> {
+    const today = this.today();
     const out = new Map<string, number>();
     for (const t of this.byUid.values()) {
       if (t.repeat !== "daily" || t.occurrences === undefined) continue;
       const dates = new Set(this.store.heldSessionDates(t.uid).filter((d) => d < from));
-      for (const i of this.store.itemsForTask(t.uid)) if (i.date < from) dates.add(i.date);
+      // A date before `from` is spoken for unless the purge is about to take it back. It survives
+      // when the session was closed, or when the date is today or later - `purgePast` only deletes
+      // pending items *before* today, and `replaceFrom` only rewrites dates from `from` on. Dropping
+      // the second case counted today's standing session as free and handed out a 29th.
+      for (const i of this.store.itemsForTask(t.uid)) if (i.date < from && (i.status !== "pending" || i.date >= today)) dates.add(i.date);
       out.set(t.uid, dates.size);
     }
     return out;
@@ -605,6 +635,31 @@ export class PlanService {
     return [...dates].sort();
   }
 
+  /**
+   * Take back the work today has already gone past and lay it out again from now.
+   *
+   * This is **not** `regenerate {from: today}`, which keeps the past exactly as it is - including a
+   * task whose slot went by untouched - and only re-times what has not started. That contract is
+   * relied on, so it is left alone. A reflow additionally reclaims those missed tasks: they leave the
+   * timeline, their minutes go back to the pool, and the generator re-places them later today if they
+   * fit and on the following days if they do not. The vacated time becomes one stretched rest.
+   *
+   * Returns the dates re-planned and the items that were reclaimed, so a caller can say what moved.
+   */
+  reflowToday(): { regenerated: string[]; reclaimed: PlanItem[] } {
+    this.lastReclaimed = [];
+    const regenerated = this.regenerateToday(true);
+    return { regenerated, reclaimed: this.lastReclaimed };
+  }
+
+  /** Task items today whose slot has gone by while they stayed pending: the work a reflow reclaims. */
+  missedToday(): PlanItem[] {
+    const now = this.nowMs();
+    return this.store
+      .getDay(this.today())
+      .items.filter((i) => i.kind === "task" && i.status === "pending" && Date.parse(i.end) <= now);
+  }
+
   /** Days after today, assuming today's still-pending items get done. Today is never touched. */
   regenerateFuture(): string[] {
     return this.replan(addDays(this.today(), 1));
@@ -632,7 +687,7 @@ export class PlanService {
    * on today counting toward the 240/480 marks, and the same fill/no-fragment rules as any day.
    * What does not fit before midnight moves to the next days, which are regenerated.
    */
-  private regenerateToday(): string[] {
+  private regenerateToday(reclaimMissed = false): string[] {
     const today = this.today();
     this.store.transaction(() => {
       this.harvestSessions();
@@ -647,12 +702,27 @@ export class PlanService {
     const old = this.store.getDay(today);
     const kept: PlanItem[] = [];
     const leaving: StoredItem[] = [];
+    const missed: PlanItem[] = [];
     for (const it of old.items) {
       if (Date.parse(it.start) < now) {
+        // A task whose whole slot went by while it stayed pending did not happen. Keeping it would
+        // charge its minutes to the day's budget and advance the 4 h marks for work nobody did, and
+        // the task would sit stranded in the past until midnight. So it leaves the timeline and its
+        // minutes go back to the pool, to be re-placed later today or on the days after - the same
+        // thing the midnight rollover does, done at the moment it becomes true instead.
+        if (reclaimMissed && it.kind === "task" && it.status === "pending" && Date.parse(it.end) <= now) {
+          missed.push(it);
+          continue;
+        }
         const finishedEarly = it.kind === "task" && it.status !== "pending" && Date.parse(it.end) > now;
         kept.push(finishedEarly ? { ...withPlanned(it), end: toIso(Math.max(nowMin, Date.parse(it.start) + MIN), tz) } : it);
       } else if (it.kind === "task" && it.status !== "pending") leaving.push(toChecked(it, true));
     }
+    // Rests that trailed the missed work are gone with it. What is left of the morning ends at the
+    // last thing that actually ran, and the bridge rest below covers everything from there to now as
+    // one stretched rest - so the vacated time reads as time off, never as an unlabelled hole.
+    if (missed.length) while (kept.length && kept.at(-1)!.kind === "rest") kept.pop();
+    this.lastReclaimed = missed;
     const checked: StoredItem[] = [...old.checked, ...leaving];
     const spent = kept.filter((i) => i.kind === "task").reduce((n, i) => n + minutesOf(i), 0);
 
@@ -906,15 +976,22 @@ export class PlanService {
 
   /**
    * Re-plan after items of `dates` went back to pending (undo). The task's remaining minutes just
-   * grew, so the re-plan starts at the earliest day that may take them - the rest of today when the
-   * change touches today or the past, otherwise tomorrow - never only from the item's own date, which
-   * would leave the days before it holding the plan made while the task looked finished.
+   * grew, so the re-plan starts at the earliest day that may take them - which is **today**, whatever
+   * date the undone item sat on, and never only the item's own date, which would leave the days
+   * before it holding the plan made while the task looked finished.
+   *
+   * Today is included even when the undone item was in the future. Those freed minutes may belong to
+   * a higher-priority prep track than whatever is still scheduled for the rest of today, and hard
+   * rule 7 - the prep slot belongs to the lowest-priority track that still has pending tasks - has to
+   * hold at every instant, not only from tomorrow. Starting at tomorrow left the remainder of today
+   * running the wrong track until midnight; the randomized 400-op test reaches that state through an
+   * undo on a future item. Today's history is untouched either way: `regenerateToday` keeps the past
+   * and in-progress items and only re-times what has not started.
+   *
    * Days off stay off (P7 invariant 6).
    */
-  private replanFrom(dates: string[]): string[] {
-    const today = this.today();
-    const first = [...dates].sort()[0];
-    return this.replan(!first || first <= today ? today : addDays(today, 1));
+  private replanFrom(_dates: string[]): string[] {
+    return this.replan(this.today());
   }
 
   /**

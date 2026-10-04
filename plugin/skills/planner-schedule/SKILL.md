@@ -108,7 +108,10 @@ curl -s -X POST http://127.0.0.1:4317/reload
   status and gives the minutes back. On a `checked` item, on a date before today, or inside a day
   off, it **removes** that item instead (a past item's status is never rewritten) and re-plans the
   task — the answer carries `replanned: true`, and `item` is the task's new pending item, or `null`
-  if it no longer fits the horizon.
+  if it no longer fits the horizon. An undo re-plans **from today**, whatever date the undone item sat
+  on, because the minutes it frees may belong to a higher-priority prep track than what is still
+  scheduled for the rest of the day. So the rest of today can be re-timed by an undo — today's past
+  and in-progress items never move.
 - **Checking or skipping never reshuffles today on its own.** A skipped slot stays empty time; future
   days are regenerated. To reclaim today's freed time, call `POST /plan/regenerate {"from":"<today>"}`
   — and read "Days off" below first.
@@ -132,8 +135,8 @@ curl -s -X POST http://127.0.0.1:4317/reload
   rather than silently "fixing" the amount.
 - A non-finite `amount` gets 400 with the fixed hint
   `Send a whole number, e.g. { "amount": 30, "unit": "minutes" }.`
-- `occurrences` counts **sessions, not dates**, so a shift can neither lose nor add a lesson: the
-  total stays 28 whatever you shift.
+- `occurrences` counts **sessions, not dates**, so neither a shift nor an ignored day can lose a
+  lesson: the total stays 28. A session is spent only when it is **acted on** — done, or skipped.
 - Report `endOfDay` in plain words after a shift.
 
 ### Regenerating
@@ -168,10 +171,17 @@ curl -s -X POST http://127.0.0.1:4317/reload
   than by hand, so the fix is validated before it reaches disk.
 - Reload regenerates **only future days**. To fit newly added work into **today**, follow it with
   `POST /plan/regenerate {"from":"<today>"}`.
-- **History is immutable**: every pending item before today — a task, a daily slot or a rest — never
-  happened, so it is deleted; a one-off task's remaining minutes are re-placed with fresh part
-  numbers, and a daily slot's session is recorded first so it is never handed out twice. This is also
-  what the midnight rollover does.
+- **History is immutable, and unfinished work carries itself forward**: every pending item before
+  today — a task, a daily slot or a rest — never happened, so it is deleted and the work comes back at
+  the front of the next day's queue. A one-off task's remaining minutes are re-placed with fresh part
+  numbers; a daily slot's session returns to the pool, because a date going by never held it. This is
+  also what the midnight rollover does.
+
+  **So a day the owner ignored costs the plan a day, not the owner the work**, and the horizon is a
+  rolling window rather than a programme end date — the plan simply reaches further out. Never tell
+  them unfinished work was lost or that they have "fallen behind" by some amount of work; what they
+  have lost is time, and the plan already absorbed it. If they want work gone rather than deferred,
+  that is what `skipped` is for, and it is the only thing that removes it.
 
 ## Errors
 

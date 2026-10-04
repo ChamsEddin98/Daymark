@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { addDays, type PlanItem } from "@planner/core";
-import { PlanService, PlannerStore, compressedClock, loadResources, type NotificationRecord } from "@planner/store";
+import { BOUNDARY_TYPES, PlanService, PlannerStore, compressedClock, loadResources, type NotificationRecord } from "@planner/store";
 import { Daemon } from "../src/daemon.ts";
 import { LogSink, ToastSink, sinksFromEnv, toastResult, type NotifierLike, type ToastOutcome } from "../src/sinks.ts";
 import { SyncRetrier } from "../src/sync.ts";
@@ -44,6 +44,12 @@ function expectedFor(items: PlanItem[]): Expected[] {
   });
 }
 const allRecords = (store: PlannerStore) => store.listNotifications(10_000).reverse();
+/**
+ * Boundary rows only. `resume` and `missed` are notices about the plan rather than edges of it, so a
+ * test that counts or enumerates the day's boundaries has to exclude them - a `missed` row appears
+ * for every task whose slot goes by untouched, which is most of them in a simulated day nobody works.
+ */
+const boundaryRecords = (store: PlannerStore) => allRecords(store).filter((r) => (BOUNDARY_TYPES as readonly string[]).includes(r.type));
 const id = (r: { itemKey: string; type: string }) => `${r.itemKey}#${r.type}`;
 
 describe("full generated day", () => {
@@ -54,7 +60,7 @@ describe("full generated day", () => {
     expect(items.length).toBeGreaterThan(5);
     runUntil(t, `${DAY}T23:59:00+01:00`, 30_000);
 
-    const recs = allRecords(t.daemon.store);
+    const recs = boundaryRecords(t.daemon.store);
     const want = expectedFor(items);
     expect(recs.map(id).sort()).toEqual(want.map((w) => `${w.key}#${w.type}`).sort());
     expect(new Set(recs.map(id)).size).toBe(recs.length);
@@ -67,7 +73,12 @@ describe("full generated day", () => {
     expect(new Set(recs.map((r) => r.type))).toEqual(new Set(["task_start", "task_end", "rest_start", "rest_end"]));
 
     // JSONL log: one line per record, same pairs
-    const lines = readFileSync(join(d, "notifications.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    // Boundary lines only: the log sink also receives the `missed` notices, which are not edges.
+    const lines = readFileSync(join(d, "notifications.log"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l))
+      .filter((l) => (BOUNDARY_TYPES as readonly string[]).includes(l.type));
     expect(lines.map(id).sort()).toEqual(recs.map(id).sort());
     expect(lines[0]).toMatchObject({ type: "task_start", due: items[0]!.start });
     expect(lines[0].toast.title).toMatch(/^Start: /);
@@ -87,7 +98,7 @@ describe("full generated day", () => {
     t.daemon.start();
     await waitFor(() => clock.now() >= until, 20_000);
     await sleep(50);
-    const recs = allRecords(t.daemon.store);
+    const recs = boundaryRecords(t.daemon.store);
     for (const w of want) {
       const r = recs.find((x) => x.itemKey === w.key && x.type === w.type);
       expect(r, `${w.key} ${w.type}`).toBeDefined();
@@ -117,7 +128,7 @@ describe("status", () => {
     runUntil(t, Date.parse(first.end) - 5 * MIN);
     t.daemon.service.setItemStatus(first.key, "done");
     runUntil(t, `${DAY}T23:59:00+01:00`);
-    const recs = allRecords(t.daemon.store);
+    const recs = boundaryRecords(t.daemon.store);
     const types = (k: string) => recs.filter((r) => r.itemKey === k).map((r) => r.type);
     expect(types(first.key)).toEqual(["task_start"]);
     expect(types(second.key)).toEqual([]);
@@ -146,7 +157,7 @@ describe("restart and grace window", () => {
     expect(b.sink.records).toEqual([]);
     expect(b.daemon.scanner.stats.duplicates).toBeGreaterThan(0);
     runUntil(b, `${DAY}T23:59:00+01:00`);
-    const recs = allRecords(b.daemon.store);
+    const recs = boundaryRecords(b.daemon.store);
     expect(new Set(recs.map(id)).size).toBe(recs.length);
     expect(recs.length).toBe(expectedFor(items).length);
   });
@@ -156,7 +167,7 @@ describe("restart and grace window", () => {
     const t = daemon(d, `${DAY}T10:15:00`);
     t.daemon.tick();
     const now = t.clock.now();
-    const core = t.sink.records.filter((r) => r.type !== "resume");
+    const core = t.sink.boundaries;
     for (const r of core) expect(now - Date.parse(r.due)).toBeLessThanOrEqual(2 * MIN);
     // 08:00 .. 09:50 start of F3: 11 boundaries (F1, rest1, F2, rest2 start/end + F3 start)
     expect(t.logs.find((l) => l.includes("skipped"))).toMatch(/^first start: skipped 9 boundaries earlier today/);
@@ -166,7 +177,7 @@ describe("restart and grace window", () => {
     const items = daemon(d2, `${DAY}T07:00:00`).daemon.store.getDay(DAY).items;
     const t2 = daemon(d2, new Date(Date.parse(items[1]!.start) + MIN).toISOString());
     t2.daemon.tick();
-    const fired = t2.sink.records.map((r) => `${r.itemKey}#${r.type}`);
+    const fired = t2.sink.boundaries.map((r) => `${r.itemKey}#${r.type}`);
     expect(fired).toContain(`${items[1]!.key}#${items[1]!.kind}_start`);
     expect(fired).not.toContain(`${items[0]!.key}#${items[0]!.kind}_start`);
   });
@@ -188,8 +199,11 @@ describe("restart and grace window", () => {
     // restart at 10:15, inside F3 (09:50-10:50) whose start was missed
     const c = daemon(d, `${DAY}T10:15:00`);
     c.daemon.tick();
-    expect(c.sink.calls).toHaveLength(1);
-    expect(c.sink.calls[0]!.records).toEqual([
+    // One "Now: …" toast. Starting at 10:15 also finds the morning already gone by, which is its own
+    // `missed` notice (one, coalesced) - a different thing from the resume toast this test is about.
+    const notMissed = c.sink.calls.filter((x) => !x.records.some((r) => r.type === "missed"));
+    expect(notMissed).toHaveLength(1);
+    expect(notMissed[0]!.records).toEqual([
       expect.objectContaining({ type: "resume", itemKey: `${DAY}|fx/F3|1`, due: `${DAY}T09:50:00+01:00`, at: `${DAY}T10:15:00+01:00` }),
     ]);
     expect(c.sink.calls[0]!.toast).toEqual({ title: "Now: F3 · Fixture task 3", message: "Until 10:50 · then 10 min rest" });
@@ -218,7 +232,7 @@ describe("free windows (rests around closed tasks)", () => {
     const t = daemon(d, `${DAY}T${from}:00`);
     for (const k of closed) t.daemon.service.setItemStatus(K(k), k === "F3" ? "skipped" : "done");
     runUntil(t, `${DAY}T${until}:00+01:00`);
-    const shown = t.sink.calls.filter((c) => !c.silent);
+    const shown = t.sink.boundaryCalls.filter((c) => !c.silent);
     const at = (hhmm: string) => shown.filter((c) => c.records[0]!.due.slice(11, 16) === hhmm).map((c) => c.toast);
     const types = (key: string) => allRecords(t.daemon.store).filter((r) => r.itemKey === key).map((r) => r.type).sort();
     return { t, shown, at, types };
@@ -263,7 +277,7 @@ describe("free windows (rests around closed tasks)", () => {
     runUntil(t, `${DAY}T09:00:00+01:00`); // rest|1 already fired as a normal rest
     t.daemon.service.setItemStatus(K("F2"), "done");
     runUntil(t, `${DAY}T10:00:00+01:00`);
-    const titles = t.sink.calls.map((c) => `${c.records[0]!.due.slice(11, 16)} ${c.toast.title}`);
+    const titles = t.sink.boundaryCalls.map((c) => `${c.records[0]!.due.slice(11, 16)} ${c.toast.title}`);
     expect(titles).toContain("09:40 Free until 09:50");
     expect(titles).toContain("09:50 Start: F3 · Fixture task 3");
     expect(titles.filter((x) => x.includes("Free until"))).toHaveLength(1);

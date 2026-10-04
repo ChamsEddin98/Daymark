@@ -3,10 +3,10 @@
  * start, rest end + task start) become ONE toast; the store still gets one record per boundary.
  */
 import { toIso, type PlanItem } from "@planner/core";
-import type { NotificationType } from "@planner/store";
+import type { BoundaryType } from "@planner/store";
 
 export interface BoundaryEvent {
-  type: NotificationType;
+  type: BoundaryType;
   item: PlanItem;
   /** Boundary instant (epoch ms): the item's start for *_start, its end for *_end. */
   atMs: number;
@@ -66,7 +66,7 @@ export function recordTitle(e: BoundaryEvent, tz: string): string {
   }
 }
 
-const PRIORITY: NotificationType[] = ["task_start", "rest_start", "task_end", "rest_end"];
+const PRIORITY: BoundaryType[] = ["task_start", "rest_start", "task_end", "rest_end"];
 const open = (it: PlanItem) => it.kind === "rest" || it.status === "pending";
 
 /** What follows `ms`: the first open item starting at/after it (today, else the next plan day). */

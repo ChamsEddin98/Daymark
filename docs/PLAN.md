@@ -687,3 +687,154 @@ a setting about *when the day runs* would look broken if it waited until tomorro
    task, and a non-integer or out-of-range budget are all `400 INVALID_INPUT`, and nothing is stored.
 9. **Durable and shared.** The setting survives a restart, and a second `PlanService` on the same
    database reads the same value, including after a change it did not make.
+
+
+# Carry-forward (amendment to P7)
+
+The owner's words: *"automatically put the pending task to the next day ... even if it affects the
+program length ... basically the tasks work sequentially"*, and *"don't remove the skip option"*.
+
+Most of this was already true. The parts that were not are recorded here.
+
+## What already held
+
+- **One-off work carries forward untouched.** The midnight rollover deletes every pending item on a
+  past date and re-places the task's remaining minutes at the front of the next day's queue with
+  fresh part numbers. Verified against the real `resources/` folder: four consecutive days ignored
+  cost **0 minutes** of the 219 h of one-off work owed.
+- **There is no programme end to run past.** The horizon is a *rolling* window (`today + horizon - 1`,
+  extended by `meta.plan_to`), not a fixed four weeks. Neglect makes the plan reach further out; it
+  cannot overflow it.
+- **`skipped` is unchanged** and remains the only way to spend a task without doing it.
+
+## What was wrong, and is now fixed
+
+### 1. A capped daily series burned a session on a day that merely went by
+
+`sessions_held` counted a session as held "on a date that ran (it is in the past, whatever its
+status)". So four ignored days cost four of `lessons.md`'s 28 sessions, permanently — the opposite of
+carrying the work forward.
+
+**Now a session is held only when it is acted on**: `done`, or `skipped`. A date that passed with the
+session pending consumed nothing, so the series slides and finishes later. Four ignored days now cost
+**0 of 28**.
+
+Two places had to agree, and only one of them is "status is not pending":
+
+- `harvestSessions` records the durable row, and records only closed sessions.
+- `sessionsHeldFor(from)` counts what is already spoken for before `from`, which is a closed session
+  **or any date from today on** — because `purgePast` only deletes pending items *before* today and
+  `replaceFrom` only rewrites dates from `from` on, so today's standing session survives and is
+  already accounted for. Dropping that second case counted today's session as free and handed out a
+  29th, which showed up as a 28-session series being planned across 56 days.
+
+### 2. An undo of a future item left the rest of today running the wrong prep track
+
+`replanFrom` re-planned from tomorrow when the undone item was in the future, so today kept the
+layout it had while the task looked finished. Undoing work *grows* a task's remaining minutes, and
+those minutes may belong to a higher-priority prep track than what is still scheduled for the rest of
+the day — so hard rule 7 was violated until midnight.
+
+This was **pre-existing**; fixing (1) is what made the state reachable, and the randomized 400-op test
+found it: `beta/B5` placed on today while `alpha/A3` still had 240 minutes owed. The generated days
+were correct — `alpha/A3` *was* placed first on the regenerated day — but today was never rebuilt.
+
+**An undo now always re-plans from today.** `regenerateToday` keeps the past and in-progress items, so
+history is untouched; only the part of today that has not started is re-timed. Hard rule 7 holds at
+every instant.
+
+## Invariants (tests, not prose)
+
+`apps/api/test/carry-forward.test.ts`, against the real `resources/`:
+
+1. **Nothing is lost.** After a day nobody touched, every unfinished one-off task is on the plan
+   again and the minutes owed are identical to the minute.
+2. **Neglect costs days, not work.** Four ignored days leave the work owed unchanged and the horizon
+   end later than it was.
+3. **A capped series slides.** Three ignored days spend 0 sessions and the series is still being
+   handed out.
+4. **Acting on it still spends it.** `done` spends a session; so does `skipped`.
+5. **Skip is permanent.** A skipped one-off task reduces the work owed, does not return the next day,
+   and is still skipped a week later.
+6. **Sequential.** The task that led the abandoned day leads the next one; the queue is not reordered.
+
+
+# Missed work, and what the day does about it (extends "Carry-forward")
+
+The owner's words: *"Make the intra-day reflow automatic unless the user disables it and sets it to
+don't do anything, just keep it with notification to keep him aware ... then he can specify whether
+he skips it or sends the task to the next day."*
+
+## The setting
+
+`onMissed`, one more field of the active hours, applied to every day:
+
+| Value | What happens when a task's slot goes by untouched |
+|---|---|
+| `reflow` **(default)** | The work leaves the past, the rest of the day is laid out again from now, and a notification says where it went. |
+| `notify` | Nothing is touched. The notification says it is still pending and names the choices: do it, skip it, or let it roll over tonight. |
+
+Neither value is "off": one re-times the day, the other leaves it alone *and tells you*. Work is
+never lost either way - whatever is still pending at midnight carries to the next day, which is the
+"Carry-forward" behaviour this builds on.
+
+## Why reflow is a separate operation from `regenerate {from: today}`
+
+`POST /plan/regenerate {"from":"today"}` **keeps the past exactly as it is** - including a task whose
+slot went by untouched - and only re-times what has not started. That contract is documented, tested
+and relied on, so it is unchanged.
+
+A reflow does one more thing: it **reclaims** those missed tasks. They leave the timeline, their
+minutes go back to the generator's pool, and they are re-placed later today if they fit and on the
+following days if they do not. `PlanService.reflowToday()` is that operation;
+`regenerateToday(reclaimMissed)` is the shared body, so there is one layout routine and two
+documented meanings rather than two implementations.
+
+Attempting it the other way round - making the reclaim unconditional inside `regenerateToday` - broke
+ten tests at once, all of them pinning the existing contract. That is recorded here because the
+failure was the useful part: the endpoint's promise to keep the past is load-bearing.
+
+## What a reflow leaves behind
+
+A reclaimed task vacates time that has already gone by, and that time cannot be filled. So the
+rests that trailed the missed work go with it, the morning ends at the last thing that actually ran,
+and a single **stretched rest** ("Rest (extended)") covers everything from there to now. The day
+stays contiguous: the vacated time reads as time off, never as an unlabelled hole, and the day's
+budget is not charged for work nobody did.
+
+## Where it runs
+
+The **daemon**, right after the boundary scan - because a task's own `task_end` is what makes it
+missed, so it fires first and then the day reacts. Consequences:
+
+- It needs the daemon running (`npm start` runs it). Without it the midnight rollover still carries
+  the work; that is the behaviour that predates this setting, not a regression.
+- **Nothing is missed while the plan is paused.** A slot going by during a pause is exactly what a
+  pause means.
+- **One notice per item per day**, deduplicated on `(item_key, "missed")`, so a day that reflows
+  several times does not re-announce the same task. Everything detected in one tick is coalesced into
+  one toast, so a daemon starting after a day away sends one notice, not nine.
+- A reflow marks the calendar sync **pending** rather than running it on the spot. An idle day
+  reflows roughly once per task duration, and rewriting the whole day in Google each time would be a
+  lot of writes for a plan nobody is looking at; the retrier picks it up on its normal interval.
+- `missed` is a notification type, not a boundary: it does **not** obey the scanner's grace window,
+  because it is precisely a notice about something already stale. `BoundaryType` was split from
+  `NotificationType` so the scanner still deals only in edges.
+
+## Invariants (tests, not prose)
+
+`apps/daemon/test/missed.test.ts`:
+
+1. **Reclaimed, not stranded.** Hours into an untouched day, no pending item is left entirely in the
+   past, and the first task is running or still to come - in queue order.
+2. **Contiguous.** Every item starts when the one before it ended, and any rest longer than an hour
+   is named as extended.
+3. **Honest budget.** Every minute still on the timeline is a minute that can actually be worked.
+4. **Deferred, not dropped.** A whole day ignored under `reflow` loses no minutes and puts the
+   overflow on later dates.
+5. **`notify` touches nothing** - the day is byte-for-byte what it was - and still says what the
+   choices are.
+6. **`notify` still carries at midnight.**
+7. **Done and skipped are never "missed".**
+8. **Paused means nothing is missed**, and the frozen plan is untouched.
+9. **Read live**: switching to `reflow` mid-day reflows on the next tick, with no restart.

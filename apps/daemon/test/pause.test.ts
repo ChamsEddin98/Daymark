@@ -187,10 +187,12 @@ describe("no boundary fires or is recorded inside a pause (P8 invariant 5)", () 
 
     // Nobody resumes. A day and a bit later the pause can no longer be applied.
     t.clock.set(Date.parse(`${DAY}T10:49:00+01:00`) + 26 * 3_600_000);
-    const calls = t.sink.calls.length;
+    const calls = t.sink.boundaryCalls.length;
     t.daemon.tick();
     expect(t.daemon.scanner.frozen, "it stopped freezing").toBe(false);
-    expect(t.sink.calls.length, "and replayed nothing: the plan was never moved").toBe(calls);
+    // Boundary calls only: the stale pause replays no boundary. A `missed` notice about the day that
+    // went by while nobody resumed is a different thing, and it is allowed to appear.
+    expect(t.sink.boundaryCalls.length, "and replayed nothing: the plan was never moved").toBe(calls);
     expect(boundary(t, f3.key, "task_end"), "no stale 'that task is over' from two days ago").toBeUndefined();
     expect(t.logs.some((l) => l.includes("older than 24 h"))).toBe(true);
   });

@@ -113,6 +113,12 @@ export interface ActiveHours {
   dayEnd: string;
   /** Minutes of task time a day holds, rests excluded. */
   dailyTaskMin: number;
+  /**
+   * What happens when a task's slot goes by and it is still pending. `reflow` lays the rest of the
+   * day out again from now; `notify` changes nothing and only says so. Either way the work carries
+   * to the next day if it is still pending at midnight.
+   */
+  onMissed: "reflow" | "notify";
 }
 
 export interface SettingsResponse {

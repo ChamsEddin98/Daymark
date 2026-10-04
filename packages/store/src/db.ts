@@ -12,10 +12,16 @@ import { dataDir } from "./paths.ts";
 
 export const ITEM_STATUSES: readonly ItemStatus[] = ["pending", "done", "skipped"];
 export const BOUNDARY_TYPES = ["task_start", "task_end", "rest_start", "rest_end"] as const;
-export type NotificationType = (typeof BOUNDARY_TYPES)[number];
-/** Every type a notification record can have: the four boundaries plus "resume", the daemon's
- *  one-off "Now: …" toast when it starts mid-item. Used to validate GET /notifications?type=. */
-export const NOTIFICATION_TYPES: readonly string[] = [...BOUNDARY_TYPES, "resume"];
+/** An item edge the scanner fires. Narrower than `NotificationType`: not every notice is an edge. */
+export type BoundaryType = (typeof BOUNDARY_TYPES)[number];
+/**
+ * Notices that are not item edges: `resume`, the daemon's one-off "Now: …" toast when it starts
+ * mid-item, and `missed`, a task whose slot went by while it stayed pending.
+ */
+export const EXTRA_NOTIFICATION_TYPES = ["resume", "missed"] as const;
+export type NotificationType = BoundaryType | (typeof EXTRA_NOTIFICATION_TYPES)[number];
+/** Every type a notification record can have. Used to validate GET /notifications?type=. */
+export const NOTIFICATION_TYPES: readonly string[] = [...BOUNDARY_TYPES, ...EXTRA_NOTIFICATION_TYPES];
 
 export interface NotificationRecord {
   at: string;

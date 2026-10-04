@@ -65,6 +65,21 @@ Tests use vitest; the web UI uses Playwright (`npm test -w @planner/web`). Clock
   fence is enforced in `packages/core`'s `fitDay`, which bisects for the largest budget the window
   holds; it replaced the midnight retry loop that used to live in `regenerateToday`, so there is one
   definition of where a day has to end. See docs/PLAN.md, "Active hours".
+- **Unfinished work carries itself forward.** The rollover deletes pending items on past dates and
+  re-places the work at the front of the next day. A daily session is held only when it is **acted
+  on** (done or skipped), never because its date went by, so an ignored day slides a capped series
+  rather than spending one of its `occurrences`. Two places must agree on "held": `harvestSessions`
+  (closed only) and `sessionsHeldFor` (closed, **or** any date from today on, because the purge only
+  takes pending items from *before* today). An undo always re-plans from today, because the minutes it
+  frees may belong to a higher-priority prep track than what is still scheduled for the rest of the
+  day. See docs/PLAN.md, "Carry-forward".
+- **A missed task** - its slot went by while it stayed pending - is handled by `onMissed`, one more
+  active-hours field: `reflow` (default) reclaims the work and lays the rest of the day out again from
+  now, `notify` changes nothing and only says so. Both notify; work is never lost either way. It runs
+  in the **daemon**, after the boundary scan, and is skipped while paused. `reflowToday()` is a
+  distinct operation from `regenerate {from: today}`, which keeps the past by contract - they share
+  `regenerateToday(reclaimMissed)`. `missed` is a notification type, not a `BoundaryType`, and is
+  exempt from the scanner's grace window. See docs/PLAN.md, "Missed work".
 - Keys are stable:
   - task uid: `track/id`
   - plan item: `date|uid|part`

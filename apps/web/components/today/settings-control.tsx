@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ApiError, type ApiClient } from "@/lib/api";
 import {
+  MISSED_CHOICES,
   budgetLabel,
   describeEffective,
   draftError,
@@ -28,12 +29,14 @@ interface Props {
 }
 
 /** The windows most people actually want, so the common case is one click rather than three fields. */
-const PRESETS: { id: string; label: string; draft: HoursDraft }[] = [
-  { id: "default", label: "Standard", draft: { dayStart: "08:00", dayEnd: "24:00", hours: 8 } },
-  { id: "nine-to-six", label: "9 to 6", draft: { dayStart: "09:00", dayEnd: "18:00", hours: 6 } },
-  { id: "long", label: "Long days", draft: { dayStart: "08:00", dayEnd: "22:30", hours: 10 } },
-  { id: "evenings", label: "Evenings", draft: { dayStart: "18:00", dayEnd: "23:00", hours: 4 } },
+/** Windows only. The missed policy is its own decision, so a preset leaves it as it was. */
+const PRESETS: { id: string; label: string; window: Omit<HoursDraft, "onMissed"> }[] = [
+  { id: "default", label: "Standard", window: { dayStart: "08:00", dayEnd: "24:00", hours: 8 } },
+  { id: "nine-to-six", label: "9 to 6", window: { dayStart: "09:00", dayEnd: "18:00", hours: 6 } },
+  { id: "long", label: "Long days", window: { dayStart: "08:00", dayEnd: "22:30", hours: 10 } },
+  { id: "evenings", label: "Evenings", window: { dayStart: "18:00", dayEnd: "23:00", hours: 4 } },
 ];
+const sameWindow = (d: HoursDraft, w: Omit<HoursDraft, "onMissed">) => sameDraft(d, { ...w, onMissed: d.onMissed });
 
 /**
  * The owner's working hours: when a day may start, when it must stop, and how much work it holds.
@@ -128,8 +131,8 @@ export function SettingsControl({ api, open, onOpenChange, onSaved, onError, dis
                   key={p.id}
                   type="button"
                   data-testid={`settings-preset-${p.id}`}
-                  data-active={sameDraft(draft, p.draft) || undefined}
-                  onClick={() => set(p.draft)}
+                  data-active={sameWindow(draft, p.window) || undefined}
+                  onClick={() => set(p.window)}
                   className={cn(
                     "rounded-md border border-border px-2 py-1 text-xs font-medium outline-none",
                     "transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
@@ -189,6 +192,43 @@ export function SettingsControl({ api, open, onOpenChange, onSaved, onError, dis
                 className="tnum h-9 w-28 sm:h-8"
               />
             </div>
+
+            {/*
+              * What happens when a slot goes by untouched. Two radios rather than a switch, because
+              * neither answer is "off": one re-times the day, the other leaves it alone and tells
+              * you. The help line under each says what you are choosing, since the words alone do
+              * not make the consequence obvious.
+              */}
+            <fieldset className="mt-1 border-t border-border px-2 pt-2">
+              <legend className="sr-only">When a task's time passes and it is not done</legend>
+              <p className="mb-1.5 text-xs text-muted-foreground">If a task&apos;s time passes and it is not done</p>
+              <div className="flex flex-col gap-1">
+                {MISSED_CHOICES.map((c) => (
+                  <label
+                    key={c.id}
+                    data-testid={`settings-missed-${c.id}`}
+                    data-active={draft.onMissed === c.id || undefined}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 text-sm",
+                      "transition-colors duration-150 hover:bg-muted has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="ah-missed"
+                      value={c.id}
+                      checked={draft.onMissed === c.id}
+                      onChange={() => set({ onMissed: c.id })}
+                      className="mt-1 size-3.5 shrink-0 accent-accent outline-none"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{c.label}</span>
+                      <span className="block text-xs text-muted-foreground">{c.help}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
             <div className="px-2 pt-1.5 pb-1" aria-live="polite">
               {error ? (

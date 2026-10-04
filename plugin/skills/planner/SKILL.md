@@ -58,7 +58,7 @@ request spans areas.
 | Change a task's title, duration, type, links, `repeat`, `occurrences`, body or section, or a plan's front matter | `study-planner:planner-update` |
 | Remove a task, or delete a whole plan file | `study-planner:planner-delete` |
 | Step away and come back — "pause", "hold on", "I'm back" | `study-planner:planner-pause-resume` |
-| Change the working hours — when the day starts or ends, how many hours a day | `study-planner:planner-settings` |
+| Change the working hours — when the day starts or ends, how many hours a day, what happens to a task whose time passed | `study-planner:planner-settings` |
 | Check or force the Google Calendar sync, fix calendar auth, see what is actually in the calendar | `study-planner:planner-calendar-sync` |
 | Understand or verify how a change reached the `.md` file, preview a diff before committing, recover a file from a backup | `study-planner:planner-markdown-sync` |
 

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NotAuthorizedError } from "@planner/calendar";
-import { fixedClock, type ManualClock } from "@planner/store";
+import { DEFAULT_ACTIVE_HOURS } from "@planner/core";
+import { BOUNDARY_TYPES, PlannerStore, fixedClock, type ManualClock } from "@planner/store";
 import { Daemon, type DaemonOptions } from "../src/daemon.ts";
 import type { FiredNotification, NotificationSink } from "../src/sinks.ts";
 
@@ -31,6 +32,18 @@ export class MemorySink implements NotificationSink {
   get records() {
     return this.calls.flatMap((c) => c.records);
   }
+  /**
+   * Item edges only. `resume` and `missed` are notices about the plan rather than boundaries of it,
+   * and neither obeys the grace window, so a test about boundaries has to say so.
+   */
+  get boundaries() {
+    return this.records.filter((r) => (BOUNDARY_TYPES as readonly string[]).includes(r.type));
+  }
+  /** Calls carrying at least one item edge, so a `missed` or `resume` notice does not perturb a
+   *  test about how boundary toasts coalesce. */
+  get boundaryCalls() {
+    return this.calls.filter((c) => c.records.some((r) => (BOUNDARY_TYPES as readonly string[]).includes(r.type)));
+  }
 }
 
 export const notAuthorized = () => {
@@ -44,7 +57,23 @@ export interface TestDaemon {
   logs: string[];
 }
 
-export function makeDaemon(dir: string, at: string, o: Partial<DaemonOptions> = {}): TestDaemon {
+/**
+ * `onMissed` defaults to `"notify"` here, not to production's `"reflow"`.
+ *
+ * Most of these tests run a whole simulated day without completing anything, which under `reflow`
+ * means the plan legitimately re-times itself every time a slot goes by - so the boundaries they
+ * assert on would never arrive. Those tests are about the scanner, so the policy is pinned off and
+ * the reflow has tests of its own (`missed.test.ts`).
+ */
+export function makeDaemon(dir: string, at: string, o: Partial<DaemonOptions> & { onMissed?: "reflow" | "notify" } = {}): TestDaemon {
+  const pre = new PlannerStore({ dir });
+  try {
+    pre.setSetting("active_hours", JSON.stringify({ ...DEFAULT_ACTIVE_HOURS, onMissed: o.onMissed ?? "notify" }));
+  } finally {
+    pre.close();
+  }
+  const { onMissed: _onMissed, ...opts } = o;
+  o = opts;
   const clock = fixedClock(at, TZ);
   const sink = new MemorySink();
   const logs: string[] = [];

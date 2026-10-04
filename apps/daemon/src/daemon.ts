@@ -21,7 +21,7 @@ import {
 } from "@planner/store";
 import { BoundaryScanner, DEFAULT_GRACE_MS } from "./scanner.ts";
 import { openUrl, webUrl } from "./toastSetup.ts";
-import { errMsg, sinksFromEnv, type FiredNotification, type NotificationSink } from "./sinks.ts";
+import { errMsg, sinksFromEnv, deliver, type FiredNotification, type NotificationSink } from "./sinks.ts";
 import { SyncRetrier, defaultClientFactory, type ClientFactory } from "./sync.ts";
 
 export interface DaemonOptions {
@@ -158,6 +158,9 @@ export class Daemon {
     try {
       this.rollover();
       const fired = this.scanner.scan();
+      // After the boundaries, because a task's own `task_end` is what makes it missed: it fires
+      // first, and then the day reacts to it.
+      fired.push(...this.handleMissed());
       // Pause and resume bump `planRev` like any other write, so this is noticed within one tick; the
       // scanner reads the pause itself, and a resume stays quiet (no toast of its own).
       const paused = this.store.freshPausedSince(this.clock.now()) !== undefined;
@@ -177,6 +180,66 @@ export class Daemon {
       this.log(`tick failed: ${errMsg(e)}`);
       return [];
     }
+  }
+
+  /**
+   * A task whose slot went by while it stayed pending, handled per the owner's `onMissed` policy.
+   *
+   * - `reflow` (default): the work is taken back and the rest of the day is laid out again from now,
+   *   so a late start slides the day instead of stranding the task. The toast says where it went.
+   * - `notify`: nothing is touched. The toast says it is still pending and what the choices are.
+   *
+   * Either way the work is never lost - whatever is still pending at midnight carries to the next
+   * day - and either way exactly one notice per item per day, so a reflow that happens again later
+   * does not re-announce the same task.
+   *
+   * Nothing is missed while the plan is paused: the pause freezes the plan, so a slot going by is
+   * exactly what is supposed to happen.
+   */
+  private handleMissed(): FiredNotification[] {
+    if (this.store.freshPausedSince(this.clock.now()) !== undefined) return [];
+    const missed = this.service.missedToday();
+    if (!missed.length) return [];
+    const policy = this.service.activeHours().onMissed;
+    const at = this.service.nowIso();
+
+    // One row per item, so `GET /notifications` lists them and the next tick does not repeat them.
+    const fresh = missed.filter((i) => !this.store.hasNotification(i.key, "missed"));
+    const records = fresh.map((i) => ({ at, type: "missed" as const, itemKey: i.key, title: i.title, due: i.end }));
+    for (const r of records) this.store.recordNotification({ at: r.at, type: r.type, itemKey: r.itemKey, title: r.title });
+
+    // Act first, then describe, so the toast can say where the work actually went.
+    let moved: string | undefined;
+    if (policy === "reflow") {
+      const { regenerated, reclaimed } = this.service.reflowToday();
+      if (reclaimed.length) {
+        const uid = reclaimed[0]!.taskUid;
+        const next = uid ? this.store.itemsForTask(uid).filter((i) => i.status === "pending").sort((a, b) => Date.parse(a.start) - Date.parse(b.start))[0] : undefined;
+        moved = !next
+          ? "it no longer fits the plan"
+          : next.date === this.service.today()
+            ? `now at ${next.start.slice(11, 16)}`
+            : `moved to ${next.date}`;
+        this.log(`missed ${reclaimed.length} item(s); reflowed today (${regenerated.length} date(s) re-planned), first one ${moved}`);
+        // Marked pending rather than synced on the spot. An idle day reflows roughly once per task
+        // duration, and a Google rewrite of the whole day each time would be a lot of writes for a
+        // plan nobody is looking at; `maybeRetry` picks it up on its normal interval.
+        this.store.updateSyncState({ pending: true });
+      }
+    } else if (records.length) {
+      this.log(`missed ${records.length} item(s); onMissed=notify, so the plan was left alone`);
+    }
+
+    if (!records.length) return [];
+    const names = records.map((r) => r.title);
+    const subject = names.length === 1 ? names[0]! : `${names[0]} and ${names.length - 1} more`;
+    const toast =
+      policy === "reflow"
+        ? { title: `Missed: ${subject}`, message: moved ? `The day was re-timed — ${moved}.` : "The rest of today was re-timed." }
+        : { title: `Missed: ${subject}`, message: "Still pending. Do it, skip it, or leave it to roll over tonight." };
+    const n: FiredNotification = { toast, records };
+    deliver(this.sinks, n, this.log);
+    return [n];
   }
 
   /** Local midnight: re-read task files, regenerate from the new day, sync right away. */

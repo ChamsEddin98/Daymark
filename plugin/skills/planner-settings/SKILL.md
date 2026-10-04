@@ -1,6 +1,6 @@
 ---
 name: planner-settings
-description: Read and change the owner's active hours in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop) and dailyTaskMin (how many minutes of task time a day holds). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
+description: Read and change the owner's active hours in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop), dailyTaskMin (how many minutes of task time a day holds) and onMissed (whether a task whose time passed re-times the day or only notifies). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours", "stop moving my tasks around", "don't re-time my day automatically", "what did I miss today". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
 ---
 
 # Planner · active hours
@@ -13,6 +13,7 @@ One setting for every day — there are no per-weekday hours.
 | `dayStart` | `08:00` | the earliest a day may begin |
 | `dayEnd` | `24:00` | hard stop; nothing is placed past it (`24:00` = no fence) |
 | `dailyTaskMin` | `480` | minutes of **task time** a day holds, rests excluded |
+| `onMissed` | `reflow` | what happens when a task's time passes and it is not done |
 
 The defaults are the owner's original rules, so a planner nobody has configured behaves exactly as it
 always did.
@@ -118,12 +119,39 @@ Beyond roughly 11 hours of task time no day can hold the result at all. The sett
 | `dayStart` | `"HH:MM"`. Must be before `dayEnd`. |
 | `dayEnd` | `"HH:MM"`, up to `"24:00"` (midnight, meaning no fence). Must be after `dayStart`. |
 | `dailyTaskMin` | A whole number of **minutes**, 15 to 1440. Hours × 60 — `"10 hours"` is `600`. A numeric string is accepted. |
+| `onMissed` | `"reflow"` or `"notify"`. See below. |
 
 A window must lie inside one calendar day. **`22:00`–`02:00` is refused**: every key in the plan
 carries the calendar date, so a day spanning two dates would break all of them. If the owner studies
 through midnight, the honest answer is that the planner cannot express it, not a workaround.
 
 A PATCH is a subset: keys you don't send keep their current value.
+
+## `onMissed` — a task's time passed and it is not done
+
+| Value | What happens |
+|---|---|
+| `"reflow"` (default) | The work comes off the past, the rest of the day is laid out again from now, and a notification says where it went. A late start slides the day. |
+| `"notify"` | Nothing moves. A notification says it is still pending, and the owner decides: do it, skip it, or leave it to roll over tonight. |
+
+Neither is "off" — one re-times the day, the other leaves it alone *and says so*. **Work is never
+lost either way**: whatever is still pending at midnight carries to the next day.
+
+```sh
+# "stop moving my day around, just tell me"
+curl -s -X PATCH http://127.0.0.1:4317/settings   -H "content-type: application/json" -d '{"onMissed":"notify"}'
+```
+
+Things worth saying to the owner when this comes up:
+
+- It needs the service running (`npm start`), because the daemon is what notices. Without it, the
+  work still carries over at midnight — it just does not slide during the day.
+- Nothing counts as missed while the plan is **paused**; a slot going by is what a pause is for.
+- One notice per task per day, so a day that re-times itself several times does not nag repeatedly.
+- `GET /notifications?type=missed` lists what has been missed, which is how you answer "what did I
+  not get to today".
+- In `notify` mode the two follow-up actions are `POST /tasks/:uid/status {"status":"skipped"}` to
+  drop it (`study-planner:planner-schedule`), or nothing at all — the rollover carries it.
 
 ## What happens to the plan
 

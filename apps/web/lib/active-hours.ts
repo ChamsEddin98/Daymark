@@ -25,12 +25,20 @@ export interface HoursDraft {
   dayEnd: string;
   /** Hours, as the form shows them. Converted on submit. */
   hours: number;
+  onMissed: ActiveHours["onMissed"];
 }
 
-export const draftOf = (h: ActiveHours): HoursDraft => ({ dayStart: h.dayStart, dayEnd: h.dayEnd, hours: hoursOf(h.dailyTaskMin) });
-export const patchOf = (d: HoursDraft): ActiveHours => ({ dayStart: d.dayStart, dayEnd: d.dayEnd, dailyTaskMin: minutesOf(d.hours) });
+export const draftOf = (h: ActiveHours): HoursDraft => ({ dayStart: h.dayStart, dayEnd: h.dayEnd, hours: hoursOf(h.dailyTaskMin), onMissed: h.onMissed });
+export const patchOf = (d: HoursDraft): ActiveHours => ({ dayStart: d.dayStart, dayEnd: d.dayEnd, dailyTaskMin: minutesOf(d.hours), onMissed: d.onMissed });
 
-export const sameDraft = (a: HoursDraft, b: HoursDraft) => a.dayStart === b.dayStart && a.dayEnd === b.dayEnd && minutesOf(a.hours) === minutesOf(b.hours);
+export const sameDraft = (a: HoursDraft, b: HoursDraft) =>
+  a.dayStart === b.dayStart && a.dayEnd === b.dayEnd && minutesOf(a.hours) === minutesOf(b.hours) && a.onMissed === b.onMissed;
+
+/** The two answers to "you did not get to this", in the owner's words rather than the API's. */
+export const MISSED_CHOICES: { id: ActiveHours["onMissed"]; label: string; help: string }[] = [
+  { id: "reflow", label: "Re-time my day", help: "The rest of the day slides so the work still fits. You are told what moved." },
+  { id: "notify", label: "Just tell me", help: "Nothing moves. You decide: do it, skip it, or let it roll over tonight." },
+];
 
 const CLOCK = /^([01]?\d|2[0-4]):([0-5]\d)$/;
 const clockMin = (s: string) => {

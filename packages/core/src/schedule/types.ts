@@ -88,6 +88,19 @@ export const DEFAULT_CONFIG: Omit<ScheduleConfig, "timeZone"> = {
   minCarryPieceMin: 45,
 };
 
+/**
+ * What to do when a task's slot goes by and it is still pending.
+ *
+ * - `reflow` (the default): take the work back and lay the rest of the day out again from now, so a
+ *   late start slides the day instead of stranding the task. A notification says what moved.
+ * - `notify`: change nothing; just say so, and let the owner decide - do it, skip it, or leave it to
+ *   roll over tonight. The plan is never touched behind their back.
+ *
+ * Either way the work is never lost: whatever is still pending at midnight carries to the next day.
+ */
+export type MissedPolicy = "reflow" | "notify";
+export const MISSED_POLICIES: readonly MissedPolicy[] = ["reflow", "notify"];
+
 /** The active-hours fields, the subset an owner sets. The rest of `ScheduleConfig` is not settable. */
 export interface ActiveHours {
   /** "HH:MM". The earliest a day may start. */
@@ -96,12 +109,15 @@ export interface ActiveHours {
   dayEnd: string;
   /** Minutes of task time per day, rests excluded. */
   dailyTaskMin: number;
+  /** What happens when a task's slot passes while it is still pending. */
+  onMissed: MissedPolicy;
 }
 
 export const DEFAULT_ACTIVE_HOURS: ActiveHours = {
   dayStart: DEFAULT_CONFIG.dayStart,
   dayEnd: DEFAULT_CONFIG.dayEnd,
   dailyTaskMin: DEFAULT_CONFIG.dailyTaskMin,
+  onMissed: "reflow",
 };
 
 /** Longest day the fence allows: 24 h of clock. A budget above this could never be placed. */

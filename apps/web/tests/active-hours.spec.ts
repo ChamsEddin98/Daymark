@@ -29,7 +29,7 @@ async function open(page: Page) {
 test.beforeEach(async ({ request }) => {
   await resetMock(request, { now: T("10:20") });
   // The mock keeps the hours across resets, so each test states the ones it needs.
-  await setHours(request, { dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480 });
+  await setHours(request, { dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480, onMissed: "reflow" });
 });
 
 test("the panel opens from the header and shows the current hours", async ({ page }) => {
@@ -88,6 +88,34 @@ test("no warning when the window has room for the budget", async ({ page, reques
   await open(page);
   await expect(page.getByTestId("settings-warning")).toHaveCount(0);
   await expect(page.getByTestId("settings-effective")).toContainText("Days hold 8h");
+});
+
+test("the missed-work choice is a decision, not a toggle, and it saves", async ({ page, request }) => {
+  await openToday(page);
+  await open(page);
+  // Both answers are offered with what they mean; neither is "off".
+  await expect(page.getByTestId("settings-missed-reflow")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("settings-missed-reflow")).toContainText("Re-time my day");
+  await expect(page.getByTestId("settings-missed-notify")).toContainText("Just tell me");
+  await expect(page.getByTestId("settings-missed-notify")).toContainText(/skip|roll over/i);
+
+  await page.getByTestId("settings-missed-notify").click();
+  await expect(save(page)).toBeEnabled();
+  await save(page).click();
+  await expect(page.getByText("Working hours saved")).toBeVisible();
+  expect((await (await request.get(`${MOCK}/settings`)).json()).activeHours.onMissed).toBe("notify");
+
+  await open(page);
+  await expect(page.getByTestId("settings-missed-notify")).toHaveAttribute("data-active", "true");
+});
+
+test("a window preset leaves the missed-work choice alone", async ({ page, request }) => {
+  await setHours(request, { dayStart: "08:00", dayEnd: "24:00", dailyTaskMin: 480, onMissed: "notify" });
+  await openToday(page);
+  await open(page);
+  await page.getByTestId("settings-preset-evenings").click();
+  // The preset is about the window; it must not quietly re-enable re-timing.
+  await expect(page.getByTestId("settings-missed-notify")).toHaveAttribute("data-active", "true");
 });
 
 test("a preset fills all three fields in one click", async ({ page }) => {
