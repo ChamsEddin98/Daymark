@@ -37,6 +37,9 @@ export function PauseControl({ elapsedSec, busy, disabled, onToggle }: Props) {
       title={paused ? "Resume: push everything still to come forward by the pause" : "Pause: freeze the plan while you step away"}
       className={cn(
         "relative inline-grid h-10 place-items-center rounded-lg border px-2.5 text-sm font-medium sm:h-8 sm:px-3",
+        // Icon only on a phone, so the header has room for the title. The elapsed time is not lost:
+        // the paused notice above the timeline carries it, larger and with its own label.
+        "max-sm:w-10 max-sm:px-0",
         "transition-colors duration-200 ease-out disabled:opacity-50",
         paused
           ? "border-accent/45 bg-accent-soft text-accent hover:bg-accent/15"
@@ -46,8 +49,8 @@ export function PauseControl({ elapsedSec, busy, disabled, onToggle }: Props) {
       {/* Sizer: never shown, but it fixes the width at the widest label the button can hold. */}
       <span aria-hidden className="invisible col-start-1 row-start-1 flex items-center gap-2 whitespace-nowrap">
         <Play className="size-4" />
-        Resume
-        <span className="tnum">99:59</span>
+        <span className="max-sm:hidden">Resume</span>
+        <span className="tnum max-sm:hidden">99:59</span>
       </span>
       <span
         aria-hidden={paused}
@@ -57,7 +60,7 @@ export function PauseControl({ elapsedSec, busy, disabled, onToggle }: Props) {
         )}
       >
         <Pause className="size-4 text-muted-foreground" />
-        Pause
+        <span className="max-sm:hidden">Pause</span>
         <Kbd className="hidden sm:inline-flex">P</Kbd>
       </span>
       <span
@@ -68,9 +71,9 @@ export function PauseControl({ elapsedSec, busy, disabled, onToggle }: Props) {
         )}
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-        Resume
+        <span className="max-sm:hidden">Resume</span>
         {/* aria-hidden: the ticking number must not be announced every second. */}
-        <span className="tnum font-semibold" data-testid="pause-elapsed" aria-hidden>
+        <span className="tnum font-semibold max-sm:hidden" data-testid="pause-elapsed" aria-hidden>
           {counter}
         </span>
       </span>

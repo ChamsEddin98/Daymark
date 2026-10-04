@@ -166,11 +166,15 @@ export function ShiftControl({ api, open, onOpenChange, dayEnd, ctx, onShifted, 
           aria-describedby={disabled && disabledReason ? "shift-disabled-why" : undefined}
           className={cn(
             "inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-sm font-medium sm:h-8 sm:px-3",
+            // Icon only on a phone: four labelled controls left 34 px for a 60 px "Today", so the
+            // view's own name rendered as "Toda". 40x40 keeps the touch target.
+            "max-sm:w-10 max-sm:justify-center max-sm:px-0",
             "transition-colors duration-150 hover:bg-muted aria-expanded:bg-muted disabled:opacity-50",
           )}
         >
           <CalendarClock className="size-4 text-muted-foreground" aria-hidden />
-          Shift
+          {/* sr-only, not hidden: this text *is* the button's accessible name. */}
+          <span className="max-sm:sr-only">Shift</span>
           <Kbd className="hidden sm:inline-flex">S</Kbd>
         </PopoverTrigger>
       </span>

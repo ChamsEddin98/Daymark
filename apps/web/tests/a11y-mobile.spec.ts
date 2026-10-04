@@ -82,6 +82,34 @@ test.describe("390 px", () => {
     });
   }
 
+  test("the title is never clipped: 'Today' renders whole beside the controls", async ({ page, request }) => {
+    await resetMock(request, { now: T("10:20") });
+    await openToday(page);
+    // It read "Toda" at 390 px: four labelled controls took the row and left the h1 34 px for 60 px
+    // of text. The view's own name, and the largest thing on the screen.
+    const m = await page.evaluate(() => {
+      const h1 = document.querySelector("h1")!;
+      return { text: (h1.firstChild?.textContent ?? "").trim(), scrollW: h1.scrollWidth, clientW: h1.clientWidth };
+    });
+    expect(m.text).toBe("Today");
+    expect(m.scrollW, `"Today" is clipped: needs ${m.scrollW}px, has ${m.clientW}px`).toBeLessThanOrEqual(m.clientW);
+    // And the page still does not scroll sideways.
+    expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(390);
+  });
+
+  test("the header controls stay reachable as 40x40 targets once they lose their labels", async ({ page, request }) => {
+    await resetMock(request, { now: T("10:20") });
+    await openToday(page);
+    for (const id of ["shift-trigger", "pause-toggle", "settings-trigger", "help-trigger"]) {
+      const b = (await page.getByTestId(id).boundingBox())!;
+      expect(Math.round(b.width), `${id} width`).toBeGreaterThanOrEqual(40);
+      expect(Math.round(b.height), `${id} height`).toBeGreaterThanOrEqual(40);
+    }
+    // Losing the visible label must not lose the accessible name.
+    await expect(page.getByTestId("shift-trigger")).toHaveAccessibleName(/shift/i);
+    await expect(page.getByTestId("pause-toggle")).toHaveAccessibleName(/pause/i);
+  });
+
   test("tap to complete works on touch", async ({ page, request }) => {
     await resetMock(request, { now: T("10:20") });
     await openToday(page);
