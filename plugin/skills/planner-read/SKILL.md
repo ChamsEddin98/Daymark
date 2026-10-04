@@ -97,7 +97,7 @@ curl -s http://127.0.0.1:4317/plans
   A pause left running over 24 h freezes nothing.
 - **Days off** read as empty dates. A days shift leaves them empty on purpose, and `/today` can show
   no task items while `upcoming.date` is later. Don't describe that as a bug, and don't regenerate to
-  "fix" it without asking (see `study-planner:planner-schedule`).
+  "fix" it without asking (see `daymark:planner-schedule`).
 - `GET /tracks`: a daily task counts once, with today's status; `remainingMin` sums what is left;
   `active` means the track has a task item today.
 - An unknown `track` or `type` on `GET /tasks` is `400 INVALID_INPUT`, and the hint names the closest
@@ -122,9 +122,9 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 
 ## Where to go next
 
-- Mark something done or skipped, shift, regenerate, reload → `study-planner:planner-schedule`
-- Add / change / remove a task or a plan file → `study-planner:planner-create`,
-  `study-planner:planner-update`, `study-planner:planner-delete`
-- Pause / resume → `study-planner:planner-pause-resume`
+- Mark something done or skipped, shift, regenerate, reload → `daymark:planner-schedule`
+- Add / change / remove a task or a plan file → `daymark:planner-create`,
+  `daymark:planner-update`, `daymark:planner-delete`
+- Pause / resume → `daymark:planner-pause-resume`
 - Calendar state (`GET /sync/status`, `GET /calendar/events`, `POST /sync`) →
-  `study-planner:planner-calendar-sync`
+  `daymark:planner-calendar-sync`

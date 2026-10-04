@@ -183,7 +183,7 @@ Things worth saying to the owner when this comes up:
 - `GET /notifications?type=missed` lists what has been missed, which is how you answer "what did I
   not get to today".
 - In `notify` mode the two follow-up actions are `POST /tasks/:uid/status {"status":"skipped"}` to
-  drop it (`study-planner:planner-schedule`), or nothing at all — the rollover carries it.
+  drop it (`daymark:planner-schedule`), or nothing at all — the rollover carries it.
 
 ## What happens to the plan
 
@@ -210,7 +210,7 @@ Things worth saying to the owner when this comes up:
 5. If the owner's intent needs per-weekday hours ("weekends are different"), say plainly that the
    planner has one window for all days, and offer the nearest thing: a window that suits the days
    that matter most, or skipping tasks / a days shift for specific days
-   (`study-planner:planner-schedule`).
+   (`daymark:planner-schedule`).
 6. **Never edit `.data/` or a task file to change the hours.** This setting is not in the Markdown.
 
 ## Errors
@@ -222,12 +222,12 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 | connection refused | The service is down. | Ask the user to run `npm start`. |
 | `INVALID_INPUT` (400) | An end at or before the start, a window that wraps midnight, a window too short for one task (15 min), a `dailyTaskMin` that is not a whole number from 15 to 1440, a clock time that is not `HH:MM`, or an unknown key. | Fix the value. **Nothing was stored** — the previous hours are still in force. |
 | `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`. | Call from the CLI on 127.0.0.1. |
-| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The setting and the re-plan did succeed.** | Say so, then → `study-planner:planner-calendar-sync`. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The setting and the re-plan did succeed.** | Say so, then → `daymark:planner-calendar-sync`. |
 | `INTERNAL` (500) | Unexpected failure. | Report it with the request. |
 
 ## Where to go next
 
-- Mark things done, shift the plan, pull today earlier → `study-planner:planner-schedule`
-- Change a task's own duration (not the day's budget) → `study-planner:planner-update`
-- Step away for a while → `study-planner:planner-pause-resume`
-- See what the plan looks like now → `study-planner:planner-read`
+- Mark things done, shift the plan, pull today earlier → `daymark:planner-schedule`
+- Change a task's own duration (not the day's budget) → `daymark:planner-update`
+- Step away for a while → `daymark:planner-pause-resume`
+- See what the plan looks like now → `daymark:planner-read`

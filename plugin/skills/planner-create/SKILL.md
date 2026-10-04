@@ -32,7 +32,7 @@ keeps the file, the schedule and Google Calendar in step.
 
 Title, duration, type, links, `repeat`, `occurrences`, order, body and front matter are Markdown —
 this skill. Done, skipped, progress, days off and the pause are SQLite:
-`study-planner:planner-schedule` and `study-planner:planner-pause-resume`. Nothing is written to
+`daymark:planner-schedule` and `daymark:planner-pause-resume`. Nothing is written to
 both.
 
 ## Calling the API
@@ -90,7 +90,7 @@ Both accept `dryRun: true` in the body or `?dryRun=true`, and both answer with t
   none, or a `section` that did not exist and was added at the end of the file. Read it and say so.
 - A create rebuilds the days **after today**; today keeps the shape it already had, exactly as
   `POST /reload` leaves it. If the new task should also run today, check `GET /today` and then
-  `POST /plan/regenerate {"from":"<today>"}` (`study-planner:planner-schedule`) — that call also
+  `POST /plan/regenerate {"from":"<today>"}` (`daymark:planner-schedule`) — that call also
   clears a day off, so it is the user's to ask for.
 - A paused plan does not block a create: the write lands and the future days are rebuilt as a reload
   would. Today — the frozen part — is untouched.
@@ -151,7 +151,7 @@ The uid `track/id` is what stored progress, plan-item keys (`date|uid|part`) and
 `plannerKey` (`extendedProperties.private.plannerKey`) **all** key on. Renaming one would have to
 migrate three stores and every existing Google event, so it is not allowed: `PATCH /tasks/:uid`
 rejects `id`. **Renaming means `DELETE /tasks/:uid` then `POST /tasks` with the new id**
-(`study-planner:planner-delete`, then this skill) — and the task's progress and history go with the
+(`daymark:planner-delete`, then this skill) — and the task's progress and history go with the
 delete. The **title** is free to change; it is the event summary, not the identity. So pick the id
 once, and pick it well.
 
@@ -170,7 +170,7 @@ once, and pick it well.
    `queued` or `skipped`.
 5. **Does it land on today?** The call regenerates the affected days. If today is not in
    `regenerated` and the user wants the new work today, follow up with
-   `POST /plan/regenerate {"from":"<today>"}` (`study-planner:planner-schedule`) — and check
+   `POST /plan/regenerate {"from":"<today>"}` (`daymark:planner-schedule`) — and check
    `GET /today` first, because regenerating from today also clears a day off.
 6. **Never follow a successful create with `POST /reload`.** The call already reloaded; `/reload` is
    only for files changed outside the API.
@@ -194,7 +194,7 @@ once, and pick it well.
 - **Only under `resources/`**: every resolved path is checked to be inside the task directory and to
   end in `.md`, after symlink resolution.
 - Snapshots live in `.data/taskfile-backups/<track>.<iso>.md`, newest 20 per track
-  (`study-planner:planner-markdown-sync`).
+  (`daymark:planner-markdown-sync`).
 
 ## Errors
 
@@ -208,13 +208,13 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 | `UNKNOWN_TASK` (404) | The `after` uid or the `track` does not exist. | Use the hint, or `GET /plans` / `GET /tasks`. |
 | `CONFLICT` (409) | A duplicate `id` in that track, or the track already exists (`POST /plans`), or the track is declared by two files, or the file is gone from disk. | Pick another id (or omit `id`), `PATCH` the existing plan, or `POST /reload` if the file vanished. |
 | `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`. | Call from the CLI on 127.0.0.1. |
-| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown write and the local change did succeed.** | Say so, then → `study-planner:planner-calendar-sync`. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown write and the local change did succeed.** | Say so, then → `daymark:planner-calendar-sync`. |
 | `INTERNAL` (500) | Unexpected failure. | Report it with the request; check the API console output. |
 
 ## Where to go next
 
-- Change an existing task or plan → `study-planner:planner-update`
-- Remove one → `study-planner:planner-delete`
-- Mark it done / skipped, shift, regenerate, reload → `study-planner:planner-schedule`
-- Diffs, backups and how the write-back works → `study-planner:planner-markdown-sync`
-- Reads → `study-planner:planner-read`
+- Change an existing task or plan → `daymark:planner-update`
+- Remove one → `daymark:planner-delete`
+- Mark it done / skipped, shift, regenerate, reload → `daymark:planner-schedule`
+- Diffs, backups and how the write-back works → `daymark:planner-markdown-sync`
+- Reads → `daymark:planner-read`

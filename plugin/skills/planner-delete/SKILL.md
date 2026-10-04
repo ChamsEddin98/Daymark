@@ -33,13 +33,13 @@ sync. That is what keeps the file, the schedule and Google Calendar in step.
 > wipe it, it belongs in SQLite.**
 
 The existence of a task or a plan is Markdown — this skill. Done, skipped, progress, days off and the
-pause are SQLite: `study-planner:planner-schedule` and `study-planner:planner-pause-resume`.
+pause are SQLite: `daymark:planner-schedule` and `daymark:planner-pause-resume`.
 
 **Delete is not skip.** If the user says "drop A1", "I don't want to do A1" or "take A1 off the
 plan", **ask which they mean**:
 
 - **Skipped** (`POST /tasks/bcg%2FA1/status {"status":"skipped"}`,
-  `study-planner:planner-schedule`) keeps the task in the file and in history, and can be undone with
+  `daymark:planner-schedule`) keeps the task in the file and in history, and can be undone with
   `{"status":"pending"}`. This is almost always what they want — it is how a retired skip-test
   technique is recorded.
 - **Deleted** (this skill) removes the task, its progress and its events for good. The Markdown is
@@ -127,7 +127,7 @@ curl -s -X POST http://127.0.0.1:4317/backups/salesforce.2026-10-01T09-14-22-317
 3. **Dry-run it** and show the diff and the dates that would regenerate.
 4. Only then commit — and report the `backup` path, so they know the file is recoverable.
 5. **Offer the alternative.** If they only want to stop working on a track, a days shift or skipping
-   its tasks (`study-planner:planner-schedule`) leaves the writing in place.
+   its tasks (`daymark:planner-schedule`) leaves the writing in place.
 
 Never run the real delete in the same breath as the dry run, and never infer the confirmation from an
 earlier "yes" to something else.
@@ -156,9 +156,9 @@ the calendar's `plannerKey` all key on, so renaming one would have to migrate th
 existing Google event. `PATCH /tasks/:uid` rejects `id`.
 
 **A rename is therefore `DELETE /tasks/<old uid>` then `POST /tasks` with the new id**
-(`study-planner:planner-create`). Tell the user the cost first: the delete drops the task's status,
+(`daymark:planner-create`). Tell the user the cost first: the delete drops the task's status,
 progress and held sessions, so a partly done task comes back as new work. If what they want is a
-better *name*, `PATCH` the `title` instead (`study-planner:planner-update`) — the title is the
+better *name*, `PATCH` the `title` instead (`daymark:planner-update`) — the title is the
 calendar event summary, not the identity.
 
 ## How to work
@@ -207,13 +207,13 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 | `TASK_FILE_ERRORS` (422) | The reload after the write broke the set; the snapshot was restored. | Show `details`, then investigate before retrying. |
 | `CONFLICT` (409) | The target cannot be removed in its current state. | Explain, then act on what the hint names. |
 | `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`. | Call from the CLI on 127.0.0.1. |
-| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown delete and the local state change did succeed**; only the calendar is behind. | Say so, then → `study-planner:planner-calendar-sync`. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown delete and the local state change did succeed**; only the calendar is behind. | Say so, then → `daymark:planner-calendar-sync`. |
 | `INTERNAL` (500) | Unexpected failure. | Report it with the request; check the API console output and `GET /plans/:track` to see whether the file survived. |
 
 ## Where to go next
 
-- Skip instead of delete, or shift a track out of the way → `study-planner:planner-schedule`
-- Re-create a task after a rename → `study-planner:planner-create`
-- Change a task instead of removing it → `study-planner:planner-update`
-- Backups, diffs and how the write-back works → `study-planner:planner-markdown-sync`
-- Reads → `study-planner:planner-read`
+- Skip instead of delete, or shift a track out of the way → `daymark:planner-schedule`
+- Re-create a task after a rename → `daymark:planner-create`
+- Change a task instead of removing it → `daymark:planner-update`
+- Backups, diffs and how the write-back works → `daymark:planner-markdown-sync`
+- Reads → `daymark:planner-read`

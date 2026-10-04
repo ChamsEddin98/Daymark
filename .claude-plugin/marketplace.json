@@ -4,7 +4,7 @@
   "description": "Local marketplace for Daymark's Claude Code plugin.",
   "plugins": [
     {
-      "name": "study-planner",
+      "name": "daymark",
       "source": "./plugin",
       "description": "Drive Daymark, the local study-planner service, through its local HTTP API (port discovered at runtime).",
       "version": "0.1.0"

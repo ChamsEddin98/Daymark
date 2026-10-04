@@ -207,7 +207,7 @@ Install it from the local marketplace in `.claude-plugin/marketplace.json`. Run 
 
 ```sh
 claude plugin marketplace add ./
-claude plugin install study-planner@daymark-local
+claude plugin install daymark@daymark-local
 ```
 
 Or load it for a single session without installing it:

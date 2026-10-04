@@ -121,8 +121,8 @@ on a domain you have verified in Search Console.
 
 1. Open <https://console.cloud.google.com/> and sign in with the Google account whose calendar you want to use.
 2. Click the project picker in the top bar (next to the "Google Cloud" logo), then **New project**.
-3. Project name: `study-planner` (any name works). Leave Organization / Location as they are. Click **Create**.
-4. Wait for the notification, then click **Select project**, so the top bar shows `study-planner`.
+3. Project name: `daymark` (any name works). Leave Organization / Location as they are. Click **Create**.
+4. Wait for the notification, then click **Select project**, so the top bar shows `daymark`.
 
 ## 2. Enable the Google Calendar API
 

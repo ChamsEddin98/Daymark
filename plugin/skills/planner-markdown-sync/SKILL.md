@@ -17,8 +17,8 @@ corresponding `resources/*.md` file itself, in the same call that regenerates th
 queues the calendar sync, so the file never falls behind the schedule it generated.
 
 - **Claude Code must NEVER hand-edit a task file to change a task** — not with Edit, not with Write,
-  not with `sed`. The endpoints in `study-planner:planner-create`,
-  `study-planner:planner-update` and `study-planner:planner-delete` are the only way.
+  not with `sed`. The endpoints in `daymark:planner-create`,
+  `daymark:planner-update` and `daymark:planner-delete` are the only way.
 - **Claude Code must NEVER call Google Calendar directly.** The service rewrites the calendar after
   every change on its own.
 - **Never touch `.data/`** (the SQLite store or the backups directory) by hand either.
@@ -42,14 +42,14 @@ queues the calendar sync, so the file never falls behind the schedule it generat
 **Nothing is written to both.** `CLAUDE.md`'s rule still holds: status is never stored in Markdown.
 
 So: "make A1 two hours" is a Markdown write (`PATCH /tasks/bcg%2FA1`). "I finished A1" is not
-(`POST /tasks/bcg%2FA1/status`, `study-planner:planner-schedule`). A reload would keep the first and
+(`POST /tasks/bcg%2FA1/status`, `daymark:planner-schedule`). A reload would keep the first and
 wipe the second — which is exactly how to decide when you are unsure.
 
 ## Which endpoints write Markdown
 
 | Endpoint | Writes `resources/*.md`? |
 |---|---|
-| `POST /plans`, `PATCH /plans/:track`, `DELETE /plans/:track` | **Yes** — `study-planner:planner-create` / `-update` / `-delete` |
+| `POST /plans`, `PATCH /plans/:track`, `DELETE /plans/:track` | **Yes** — `daymark:planner-create` / `-update` / `-delete` |
 | `POST /tasks`, `PATCH /tasks/:uid`, `DELETE /tasks/:uid` | **Yes** — same three skills |
 | `POST /backups/:name/restore` | **Yes** — restores a whole file (below) |
 | `POST /items/:key/status`, `POST /tasks/:uid/status` | No |
@@ -230,7 +230,7 @@ or higher level).
       broken; it is still never the way to *change* a task.
    Once the set parses again, the write-back API works as usual — with `dryRun` first.
 4. Reload regenerates only the future days. To fit changed work into **today**, follow with
-   `POST /plan/regenerate {"from":"<today>"}` (`study-planner:planner-schedule`) — after `GET /today`,
+   `POST /plan/regenerate {"from":"<today>"}` (`daymark:planner-schedule`) — after `GET /today`,
    because regenerating from today also clears a day off.
 5. If the user insists on hand-editing anyway: that is their file and their call, but tell them it is
    silent until `POST /reload`, that the API would have validated it first, and run `POST /reload`
@@ -247,16 +247,16 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 | `INVALID_INPUT` (400) | A bad field, a bad track name, a path-traversal attempt, a missing `?confirm=<track>` on a plan delete. | Fix the request. The file was not touched. |
 | `UNKNOWN_TASK` (404) | No such uid, track or backup name. | Use the hint, or `GET /plans` / `GET /backups`. |
 | `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`. | Call from the CLI on 127.0.0.1. |
-| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown write succeeded**; only the calendar is behind. | Say so, then → `study-planner:planner-calendar-sync`. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown write succeeded**; only the calendar is behind. | Say so, then → `daymark:planner-calendar-sync`. |
 | `INTERNAL` (500) | Unexpected failure. | Report it; `GET /plans/:track` shows whether the file survived, and `GET /backups` the snapshot. |
 
 ## Where to go next
 
-- Make the change: `study-planner:planner-create`, `study-planner:planner-update`,
-  `study-planner:planner-delete`
-- SQLite-side changes (done, skipped, shift, regenerate, reload) → `study-planner:planner-schedule`
-- The calendar half of the sync → `study-planner:planner-calendar-sync`
-- Reads → `study-planner:planner-read`
+- Make the change: `daymark:planner-create`, `daymark:planner-update`,
+  `daymark:planner-delete`
+- SQLite-side changes (done, skipped, shift, regenerate, reload) → `daymark:planner-schedule`
+- The calendar half of the sync → `daymark:planner-calendar-sync`
+- Reads → `daymark:planner-read`
 
 The binding spec is `docs/PLAN.md`, "P9 · Write-back: plan and task mutation APIs"; the endpoint
 contract is `docs/API.md`.

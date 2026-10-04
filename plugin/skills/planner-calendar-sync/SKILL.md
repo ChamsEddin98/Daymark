@@ -86,7 +86,7 @@ curl -s -X POST http://127.0.0.1:4317/sync -H "content-type: application/json" \
   reconcile as a new placement: if it already has an event, that event stays at `lastStart`/`lastEnd`
   — not patched, not deleted; if it has none, none is created.
 - **A deleted task's events go on their own.** The next reconcile deletes them because its items no
-  longer exist (`study-planner:planner-delete`).
+  longer exist (`daymark:planner-delete`).
 - **`pending` stays `true`** after a failed sync until one succeeds. `lastAttemptAt` is when it last
   tried, `lastSyncAt` when it last succeeded.
 - `GET /sync/status` and `GET /health` **never fail**: if the Google client cannot even be constructed
@@ -113,7 +113,7 @@ curl -s -X POST http://127.0.0.1:4317/sync -H "content-type: application/json" \
    behind until the resume)?
 3. `POST /sync` for the window in question, and read the counts.
 4. Still wrong: `GET /calendar/events?from&to` next to `GET /plan?from&days`
-   (`study-planner:planner-read`) and compare by `plannerKey`. Report what differs — an event with no
+   (`daymark:planner-read`) and compare by `plannerKey`. Report what differs — an event with no
    `plannerKey` was created outside the planner and the planner will not manage it.
 5. Tell the user what you found; **don't repair Google Calendar by hand.**
 
@@ -124,7 +124,7 @@ silent, because the planner writes `reminders: { useDefault: false, overrides: [
 daemon already fires native desktop toasts at every boundary, and a Google reminder on top would
 double each one on that machine.
 
-The fix is the `calendarReminders` setting, owned by `study-planner:planner-settings` — route there
+The fix is the `calendarReminders` setting, owned by `daymark:planner-settings` — route there
 rather than touching the sync. In short: a number of minutes writes a popup that long before each
 task, which is what reaches a **phone**; `"inherit"` defers to that calendar's own event
 notifications, which a secondary calendar has none of by default. Setting it patches every event in
@@ -151,9 +151,9 @@ behind. Always say that first; the user has not lost anything.
 
 ## Where to go next
 
-- The plan itself: mark done / skipped, shift, regenerate, reload → `study-planner:planner-schedule`
-- Pause and resume (a resume rewrites the events) → `study-planner:planner-pause-resume`
-- Add / change / remove a task or plan → `study-planner:planner-create`,
-  `study-planner:planner-update`, `study-planner:planner-delete`
-- Reads of the plan to compare against → `study-planner:planner-read`
-- The calendar is right but silent (`calendarReminders`) → `study-planner:planner-settings`
+- The plan itself: mark done / skipped, shift, regenerate, reload → `daymark:planner-schedule`
+- Pause and resume (a resume rewrites the events) → `daymark:planner-pause-resume`
+- Add / change / remove a task or plan → `daymark:planner-create`,
+  `daymark:planner-update`, `daymark:planner-delete`
+- Reads of the plan to compare against → `daymark:planner-read`
+- The calendar is right but silent (`calendarReminders`) → `daymark:planner-settings`

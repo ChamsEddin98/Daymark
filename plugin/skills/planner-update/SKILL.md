@@ -31,7 +31,7 @@ keeps the file, the schedule and Google Calendar in step.
 
 Title, duration, type, links, `repeat`, `occurrences`, order, body and front matter are Markdown —
 this skill. Done, skipped, progress, days off and the pause are SQLite:
-`study-planner:planner-schedule` and `study-planner:planner-pause-resume`. Nothing is written to
+`daymark:planner-schedule` and `daymark:planner-pause-resume`. Nothing is written to
 both. So "make A1 two hours" is a PATCH here; "I finished A1" is **not**.
 
 ## Calling the API
@@ -142,7 +142,7 @@ would have to migrate three stores and every existing Google event, so `PATCH` *
 a hint to delete and re-create.
 
 **To rename**: `DELETE /tasks/<old uid>` then `POST /tasks` with the new id
-(`study-planner:planner-delete`, then `study-planner:planner-create`). Tell the user what that costs
+(`daymark:planner-delete`, then `daymark:planner-create`). Tell the user what that costs
 before you do it: the delete removes the task's status, progress, held sessions and calendar events,
 so a half-finished task comes back as new work. If what they actually want is a better **name**,
 patch `title` instead — that is the event summary and it changes freely.
@@ -173,7 +173,7 @@ patch `title` instead — that is the event summary and it changes freely.
    change to **when** work runs — `duration`, `repeat`, `occurrences`, `section`, or a plan's
    `priority` or `defaultDuration`. For those, if the user wants today to follow too, check
    `GET /today` and then `POST /plan/regenerate {"from":"<today>"}`
-   (`study-planner:planner-schedule`) — that call also clears a day off, which is why it is theirs
+   (`daymark:planner-schedule`) — that call also clears a day off, which is why it is theirs
    to ask for and not something to do by reflex.
 7. **A paused plan does not block a PATCH.** The file is the source of truth, so the write lands and
    the future days are rebuilt as a reload would. Today — the frozen part — is untouched.
@@ -199,7 +199,7 @@ patch `title` instead — that is the event summary and it changes freely.
   and are not in it, so editing a task cannot touch it.
 - Snapshots live in `.data/taskfile-backups/<track>.<iso>.md`, newest 20 per track, listed by
   `GET /backups` and restored by `POST /backups/:name/restore`
-  (`study-planner:planner-markdown-sync`).
+  (`daymark:planner-markdown-sync`).
 
 ## Errors
 
@@ -213,13 +213,13 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 | `TASK_FILE_ERRORS` (422) | The proposed text does not parse, or the reload after the write broke the set (e.g. a duplicate uid across files) — the snapshot was restored. `details` is `[{file,line,message}]`. | Show it, fix the body, retry. |
 | `CONFLICT` (409) | The patch would collide with something that already exists. | Explain, then choose another value. |
 | `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`. | Call from the CLI on 127.0.0.1. |
-| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown write and the local change did succeed.** | Say so, then → `study-planner:planner-calendar-sync`. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | **The Markdown write and the local change did succeed.** | Say so, then → `daymark:planner-calendar-sync`. |
 | `INTERNAL` (500) | Unexpected failure. | Report it with the request; check the API console output. |
 
 ## Where to go next
 
-- Add a task or a plan → `study-planner:planner-create`
-- Remove one (and renaming an id) → `study-planner:planner-delete`
-- Mark it done / skipped, shift, regenerate, reload → `study-planner:planner-schedule`
-- Diffs, backups and how the write-back works → `study-planner:planner-markdown-sync`
-- Reads → `study-planner:planner-read`
+- Add a task or a plan → `daymark:planner-create`
+- Remove one (and renaming an id) → `daymark:planner-delete`
+- Mark it done / skipped, shift, regenerate, reload → `daymark:planner-schedule`
+- Diffs, backups and how the write-back works → `daymark:planner-markdown-sync`
+- Reads → `daymark:planner-read`

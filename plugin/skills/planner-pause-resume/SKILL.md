@@ -90,7 +90,7 @@ timeline item (`null` when today is empty); `day` is today after the shift.
   state. The Markdown write-back endpoints regenerate too, so they are refused the same way.
 - **Still working**: `POST /items/:key/status` and `POST /tasks/:uid/status`, undo included. Ticking
   something off is not moving the schedule, so these apply, still re-plan the later days, and leave
-  the pause alone (`study-planner:planner-schedule`).
+  the pause alone (`daymark:planner-schedule`).
 - **No notifications.** The daemon reads the pause from the store on every scan (~1 s), fires no task
   or rest boundary for an instant inside the pause and **records nothing** for those instants, so the
   resume does not replay them. After the resume the boundaries fire at their new times.
@@ -101,7 +101,7 @@ timeline item (`null` when today is empty); `day` is today after the shift.
 - **Google Calendar follows.** A resume queues the usual debounced sync, so the events are rewritten;
   a pause changes nothing and queues nothing. Events are written with whole seconds, so after a
   resume the next sync of an unchanged plan still reports `unchanged`
-  (`study-planner:planner-calendar-sync`).
+  (`daymark:planner-calendar-sync`).
 
 ## Limits
 
@@ -113,7 +113,7 @@ timeline item (`null` when today is empty); `day` is today after the shift.
   `/health` and `/today` but **no longer freezes the plan** — otherwise neither the resume nor the
   shift the hint names would be allowed — and the next successful shift or regenerate clears it. So
   for a pause left running overnight, tell the user what happened and offer
-  `POST /plan/shift {"amount":N,"unit":"days"}` (`study-planner:planner-schedule`).
+  `POST /plan/shift {"amount":N,"unit":"days"}` (`daymark:planner-schedule`).
 
 ## Errors
 
@@ -130,7 +130,7 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 
 ## Where to go next
 
-- Shift, regenerate, mark done / skipped, reload → `study-planner:planner-schedule`
-- Reads and how to interpret a paused `/today` → `study-planner:planner-read`
-- Calendar sync after a resume → `study-planner:planner-calendar-sync`
-- Changing a task's duration or any other file state → `study-planner:planner-update`
+- Shift, regenerate, mark done / skipped, reload → `daymark:planner-schedule`
+- Reads and how to interpret a paused `/today` → `daymark:planner-read`
+- Calendar sync after a resume → `daymark:planner-calendar-sync`
+- Changing a task's duration or any other file state → `daymark:planner-update`

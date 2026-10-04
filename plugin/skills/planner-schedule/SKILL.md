@@ -13,8 +13,8 @@ These are the **SQLite-side** changes: status, progress, days off and the plan l
 
 Done, skipped, progress, days off and the pause are SQLite — this skill. Title, duration, type,
 links, `repeat`, order and front matter are Markdown, and they are **only** ever changed through the
-write-back API: load `study-planner:planner-create`, `study-planner:planner-update` or
-`study-planner:planner-delete`. **Never hand-edit a `resources/*.md` file to change a task, and
+write-back API: load `daymark:planner-create`, `daymark:planner-update` or
+`daymark:planner-delete`. **Never hand-edit a `resources/*.md` file to change a task, and
 never call Google Calendar directly** — the service rewrites the calendar after every change here on
 its own (debounced by 2 s).
 
@@ -167,7 +167,7 @@ curl -s -X POST http://127.0.0.1:4317/reload
   pulled from git. Every API write-back (create / update / delete of a task or plan) already reloads
   and regenerates in the same call, so you never follow one with `/reload`.
 - On `422 TASK_FILE_ERRORS` the previous tasks stay loaded; show `details` as `file:line: message`.
-  Fix the file through `study-planner:planner-update` (or `planner-create` / `planner-delete`) rather
+  Fix the file through `daymark:planner-update` (or `planner-create` / `planner-delete`) rather
   than by hand, so the fix is validated before it reaches disk.
 - Reload regenerates **only future days**. To fit newly added work into **today**, follow it with
   `POST /plan/regenerate {"from":"<today>"}`.
@@ -194,10 +194,10 @@ Always `{"error":{"code","message","hint"}}` — show the `hint`.
 | `UNKNOWN_TASK` (404) | No such uid. | Use the hint, or `GET /tasks`. Don't guess repeatedly. |
 | `UNKNOWN_ITEM` (404) | No such item key. The hint says whether the task exists but isn't scheduled on that date, whether the date is past the stored plan, or that you should use `POST /tasks/:uid/status` instead. | Follow the hint. If a key's part number changed but the task has exactly one item on that date, the key still resolves. |
 | `CONFLICT` (409) | A status change on a rest, a `date` the task has no item on (the hint lists the dates it is scheduled on), or nothing left to shift. | Explain, then act on a valid target. |
-| `PAUSED` (409) | The plan is paused, so it refuses to move. `details.paused` says since when. | `POST /plan/resume` first → `study-planner:planner-pause-resume`. Status changes still work. |
+| `PAUSED` (409) | The plan is paused, so it refuses to move. `details.paused` says since when. | `POST /plan/resume` first → `daymark:planner-pause-resume`. Status changes still work. |
 | `TASK_FILE_ERRORS` (422) | `/reload` found invalid files; the old tasks are kept. | Show `details`, fix through the write-back API, reload again. |
 | `FORBIDDEN_ORIGIN` / `FORBIDDEN_HOST` (403) | A browser `Origin`, or a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`. | Call from the CLI on 127.0.0.1. |
-| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | Only `POST /sync` raises these. **The local change did succeed.** | → `study-planner:planner-calendar-sync`. |
+| `CALENDAR_NOT_AUTHORIZED` (503) / `CALENDAR_ERROR` (502) | Only `POST /sync` raises these. **The local change did succeed.** | → `daymark:planner-calendar-sync`. |
 | `INTERNAL` (500) | Unexpected failure. | Report it with the request. |
 
 After any change, confirm what happened from the response: what is next, the new end of the day, the
@@ -205,8 +205,8 @@ dates in `regenerated`, the dates in `clearedDaysOff`.
 
 ## Where to go next
 
-- Reads and how to interpret them → `study-planner:planner-read`
-- Add / change / remove a task or a plan **file** → `study-planner:planner-create`,
-  `study-planner:planner-update`, `study-planner:planner-delete`
-- Pause / resume → `study-planner:planner-pause-resume`
-- Calendar → `study-planner:planner-calendar-sync`
+- Reads and how to interpret them → `daymark:planner-read`
+- Add / change / remove a task or a plan **file** → `daymark:planner-create`,
+  `daymark:planner-update`, `daymark:planner-delete`
+- Pause / resume → `daymark:planner-pause-resume`
+- Calendar → `daymark:planner-calendar-sync`

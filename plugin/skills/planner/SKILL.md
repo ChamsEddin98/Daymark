@@ -45,22 +45,22 @@ file, the schedule and the calendar never drift apart.
 
 ## Routing table
 
-Load a child with the Skill tool (`study-planner:<name>`); the user can type `/study-planner:<name>`.
+Load a child with the Skill tool (`daymark:<name>`); the user can type `/daymark:<name>`.
 Each child is self-contained — it repeats the base URL, the port discovery, the health check and the
 identifier formats — so you never need this skill loaded alongside it. Load more than one when a
 request spans areas.
 
 | The user wants to … | Load |
 |---|---|
-| Know what's now or next, today's or the week's plan, a task's details or remaining minutes, track progress, which plans exist, which notifications fired | `study-planner:planner-read` |
-| Mark something done or skipped, undo it, shift the plan by minutes/hours/days, pull the rest of today earlier, reload after hand-edited files | `study-planner:planner-schedule` |
-| Add a task, or start a new plan / track | `study-planner:planner-create` |
-| Change a task's title, duration, type, links, `repeat`, `occurrences`, body or section, or a plan's front matter | `study-planner:planner-update` |
-| Remove a task, or delete a whole plan file | `study-planner:planner-delete` |
-| Step away and come back — "pause", "hold on", "I'm back" | `study-planner:planner-pause-resume` |
-| Change the working hours — when the day starts or ends, how many hours a day, what happens to a task whose time passed | `study-planner:planner-settings` |
-| Check or force the Google Calendar sync, fix calendar auth, see what is actually in the calendar | `study-planner:planner-calendar-sync` |
-| Understand or verify how a change reached the `.md` file, preview a diff before committing, recover a file from a backup | `study-planner:planner-markdown-sync` |
+| Know what's now or next, today's or the week's plan, a task's details or remaining minutes, track progress, which plans exist, which notifications fired | `daymark:planner-read` |
+| Mark something done or skipped, undo it, shift the plan by minutes/hours/days, pull the rest of today earlier, reload after hand-edited files | `daymark:planner-schedule` |
+| Add a task, or start a new plan / track | `daymark:planner-create` |
+| Change a task's title, duration, type, links, `repeat`, `occurrences`, body or section, or a plan's front matter | `daymark:planner-update` |
+| Remove a task, or delete a whole plan file | `daymark:planner-delete` |
+| Step away and come back — "pause", "hold on", "I'm back" | `daymark:planner-pause-resume` |
+| Change the working hours — when the day starts or ends, how many hours a day, what happens to a task whose time passed | `daymark:planner-settings` |
+| Check or force the Google Calendar sync, fix calendar auth, see what is actually in the calendar | `daymark:planner-calendar-sync` |
+| Understand or verify how a change reached the `.md` file, preview a diff before committing, recover a file from a backup | `daymark:planner-markdown-sync` |
 
 ### Route on the verb, not the noun
 
