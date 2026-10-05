@@ -1,7 +1,13 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { TODAY, TOMORROW, cleanup, enc, expectError, makeApi, ms, shape, tasksOf, tempResources, type TestApi } from "./helpers.ts";
+
+/**
+ * Read from the same package.json the API reads, never pinned as a literal: a hardcoded version
+ * here turns every release into a failing test, which is how 1.0.0 shipped before this was caught.
+ */
+const VERSION = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
 
 const open: TestApi[] = [];
 const dirs: string[] = [];
@@ -21,7 +27,7 @@ describe("read endpoints", () => {
     const t = await api();
     const r = await t.get("/health");
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ ok: true, version: "0.1.0", now: "2026-09-28T10:15:00+01:00", timeZone: "Africa/Tunis", tasksLoaded: 34 });
+    expect(r.body).toMatchObject({ ok: true, version: VERSION, now: "2026-09-28T10:15:00+01:00", timeZone: "Africa/Tunis", tasksLoaded: 34 });
     // `credential` says which of the two Google credentials is in play ("injected" under test),
     // and `owned` is false only when CALENDAR_ID names a calendar the planner must never replace.
     expect(r.body.calendar).toEqual({
