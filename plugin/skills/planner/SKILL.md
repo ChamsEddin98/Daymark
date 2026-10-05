@@ -54,6 +54,7 @@ request spans areas.
 |---|---|
 | Know what's now or next, today's or the week's plan, a task's details or remaining minutes, track progress, which plans exist, which notifications fired | `daymark:planner-read` |
 | Mark something done or skipped, undo it, shift the plan by minutes/hours/days, pull the rest of today earlier, reload after hand-edited files | `daymark:planner-schedule` |
+| Ask what happened to work they did not finish, or whether they have fallen behind | `daymark:planner-schedule` (it carries forward on its own — nothing to call) |
 | Add a task, or start a new plan / track | `daymark:planner-create` |
 | Change a task's title, duration, type, links, `repeat`, `occurrences`, body or section, or a plan's front matter | `daymark:planner-update` |
 | Remove a task, or delete a whole plan file | `daymark:planner-delete` |
@@ -76,6 +77,7 @@ The same task can be the subject of either kind of change, so route on *what is 
 | "I edited bcg.md myself" | A reload, not a write-back | `planner-schedule` |
 | "Rename A1 to A1b" | `id` is immutable: delete, then re-create | `planner-delete`, then `planner-create` |
 | "Push everything an hour" / "move it all to tomorrow" | SQLite | `planner-schedule` |
+| "I didn't do anything yesterday" / "am I behind?" | Already handled — pending work carried forward by itself. Do **not** shift or regenerate to "catch up" | `planner-schedule` |
 | "Is my calendar up to date?" | — | `planner-calendar-sync` |
 | "Show me what that edit did to the file" | — | `planner-markdown-sync` |
 

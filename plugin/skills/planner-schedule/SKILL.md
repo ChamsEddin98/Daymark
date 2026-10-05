@@ -183,6 +183,33 @@ curl -s -X POST http://127.0.0.1:4317/reload
   have lost is time, and the plan already absorbed it. If they want work gone rather than deferred,
   that is what `skipped` is for, and it is the only thing that removes it.
 
+## Unfinished work: what already happens on its own
+
+Asked "what happens to the tasks I didn't finish?", the answer is **nothing is lost** — and no
+endpoint needs calling to make that true. Say so plainly rather than offering to rescue the work.
+
+**During the day.** A task whose slot goes by while still pending is *missed*, and the `onMissed`
+setting decides what follows: `reflow` (the default) takes the work off the past and lays the rest of
+the day out again from now; `notify` touches nothing and says so. Both notify. The setting itself
+lives in `daymark:planner-settings` — route there to read or change it.
+
+**At midnight.** Whatever is still pending carries to the next day, at the **front** of the queue:
+
+- Neglect costs **days, not work**. Four ignored days cost 0 minutes of work owed; the plan just
+  reaches further out. The horizon is a rolling window, so there is no programme end to overrun.
+- A capped daily series (`occurrences`) spends a session only when it is **acted on**. A day that
+  merely went by consumes nothing, so the series finishes later instead of losing sessions.
+- The order holds: the task that led the abandoned day leads the next one.
+
+**So do not** "catch up" by shifting, regenerating or re-creating anything. `POST /plan/regenerate`
+is not a recovery tool, and re-creating a task that already carried forward duplicates it.
+
+**Skip is the deliberate exception.** `skipped` is the only way to spend a task without doing it: it
+does not return the next day and it does spend a session of a capped series. When the user means
+"I'm behind", that is carry-forward and needs nothing. When they mean "this one does not matter",
+that is a skip. If which one they mean is unclear, **ask** — the two are not reversible in the same
+way.
+
 ## Errors
 
 Always `{"error":{"code","message","hint"}}` — show the `hint`.

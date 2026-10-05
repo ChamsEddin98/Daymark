@@ -74,6 +74,86 @@ the environment win. It writes the ports it used to `.data/runtime.json`. The Cl
 that file (then `PLANNER_API_PORT` / `.env`, then the default 4317) to find the API, so a non-default
 port works without extra setup.
 
+## Using it day to day
+
+Once `npm start` is running, the loop is: open <http://127.0.0.1:3417>, work down the day, tick
+things off. Everything else happens on its own.
+
+**The daily view** shows one day — what is running now, what is next, and the whole timeline with
+rests in place. Each task carries its platform link as a one-click chip. The page needs no reloading;
+it follows the API over SSE.
+
+**Tick a task off** with its circle, or from the keyboard — the page works entirely without a mouse
+(press `?` for the list):
+
+| Key | |
+|---|---|
+| `j` / `k` | next / previous task |
+| `x` or `Space` | complete / reopen |
+| `d` | **skip** / unskip |
+| `o` or `Enter` | open the task's link |
+| `s` | shift the rest of today |
+| `p` | pause / resume |
+| `u` | undo the last change (5 s) |
+| `n` | jump to now |
+
+**Notifications** fire on the desktop at every boundary — task start, task end, rest start, rest end
+— from the daemon, so they arrive whether or not the browser is open. To get them on your phone
+instead, see [Calendar reminders](#calendar-reminders).
+
+### If you don't tick something off
+
+This is the case worth understanding, because the planner acts on its own here.
+
+A task whose slot goes by while it is still pending is **missed**. What happens next is the
+`onMissed` active hour, and neither value loses the work:
+
+| `onMissed` | What happens |
+|---|---|
+| `reflow` **(default)** | The work leaves the past, the rest of the day is laid out again from now, and a notification says where it went. A late start slides the day instead of stranding the task. |
+| `notify` | Nothing is touched. The notification says the task is still pending and names your choices: do it, skip it, or let it roll over tonight. |
+
+Change it from the gear in the daily view, or:
+
+```sh
+curl -s -X PATCH http://127.0.0.1:4317/settings \
+  -H "content-type: application/json" -d '{"onMissed":"notify"}'
+```
+
+After a reflow the morning ends at the last thing that actually ran, and one **"Rest (extended)"**
+covers the gap from there to now. Time that has already gone by cannot be filled, so it reads as time
+off rather than as an unlabelled hole — and the day's budget is not charged for work nobody did.
+
+Two things to know: a reflow is the **daemon's** job, so it needs `npm start` (or the daemon) running
+— without it you still lose nothing, the midnight rollover just does the carrying instead. And
+**nothing is missed while the plan is paused**, because a slot going by is exactly what a pause means.
+
+### What happens at midnight
+
+Whatever is still pending **carries to the next day**, at the front of the queue. Nothing is dropped
+and nothing is reordered:
+
+- **Neglect costs days, not work.** Four consecutive days ignored cost **0 minutes** of work owed —
+  verified in the tests. The plan simply reaches further out; the horizon is a rolling window, so
+  there is no programme end to run past.
+- **A capped series slides.** A daily lesson with `occurrences: 28` spends a session only when you
+  **act** on it. A day that merely went by consumes nothing, so the series finishes later rather than
+  losing sessions.
+- **The order holds.** The task that led the day you abandoned leads the next one.
+
+### Skip is the deliberate exception
+
+Skipping is the one way to spend a task without doing it, and it is permanent: a skipped task does
+not come back tomorrow, and it still counts as a spent session for a capped series. That is the
+point — it is how you say "not important", as opposed to simply not getting to it.
+
+Everything else is reversible. `u` undoes the last change for five seconds, and reopening a task you
+had ticked off puts its minutes back and re-plans **from today** — because the work it frees may
+belong to a higher-priority track than whatever is currently scheduled for the rest of the day.
+
+Full rules and the tests that pin them: [docs/PLAN.md](docs/PLAN.md), "Carry-forward" and "Missed
+work".
+
 ## Pause
 
 Stepping away? **Pause** in the web UI (or `POST /plan/pause`) freezes the plan and records the
@@ -125,6 +205,7 @@ curl -s -X PATCH http://127.0.0.1:4317/settings   -H "content-type: application/
 | `dayStart` | `08:00` | the earliest a day may begin |
 | `dayEnd` | `24:00` | hard stop; nothing is placed past it (`24:00` = no fence) |
 | `dailyTaskMin` | `480` | minutes of **task time** a day holds, rests excluded |
+| `onMissed` | `reflow` | what happens when a task's slot goes by untouched — see [Using it day to day](#using-it-day-to-day) |
 
 The defaults are the original rules, so an unconfigured planner behaves exactly as before. The rest
 rules never change: a 10-minute rest between tasks and a 1-hour rest after every 4 hours of work, so
