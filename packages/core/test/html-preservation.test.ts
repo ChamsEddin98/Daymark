@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasRealPlans } from "./real-plans.ts";
 import { parseTaskFile, type Link, type TaskFile } from "../src/index.ts";
 
 const RES = resolve(import.meta.dirname, "../../../resources");
@@ -60,7 +61,8 @@ const SOURCES = [
   },
 ];
 
-describe.each(SOURCES)("$html -> $md", (src) => {
+// Guarded: these read the owner's own plan files, which are gitignored (see test/real-plans.ts).
+describe.skipIf(!hasRealPlans).each(SOURCES)("$html -> $md", (src) => {
   const html = readFileSync(resolve(RES, src.html), "utf8").replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, "");
   const md = readFileSync(resolve(RES, src.md), "utf8");
   const { file, errors } = parseTaskFile(md, src.md);
@@ -163,7 +165,7 @@ it.each([
   expect(checked).toBeGreaterThan(2);
 });
 
-it("anthropic: every non-rest, non-technique schedule row became a practice task", () => {
+it.skipIf(!hasRealPlans)("anthropic: every non-rest, non-technique schedule row became a practice task", () => {
   const html = readFileSync(resolve(RES, "fde-coding-screen-plan.html"), "utf8");
   const sched = html.slice(html.indexOf('id="sched"'), html.indexOf('id="day"'));
   const rows = [...sched.matchAll(/<tr><td class="mono">\d+<\/td><td>(.*?)<\/td><td>[\s\S]*?<span>(.*?)<\/span>/g)]

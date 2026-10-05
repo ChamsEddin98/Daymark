@@ -11,6 +11,8 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixedClock, type ManualClock } from "@planner/store";
 import { createApi, type Api } from "../src/app.ts";
+// These build an API over the owner's own plan files, which are gitignored.
+import { hasRealPlans } from "../../../packages/core/test/real-plans.ts";
 import { checkDay, cleanup, enc, expectError, mins, ms, notAuthorized, tasksOf, tempDir } from "./helpers.ts";
 
 const checkDayTz = (d: any) => checkDay(d, TZ);
@@ -67,7 +69,7 @@ afterEach(async () => {
 const day = async (t: Real, date: string) => (await t.get(`/plan?from=${date}&days=1`)).body.days[0];
 const nextDay = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
-describe("D · undo across a restart: pending means scheduled", () => {
+describe.skipIf(!hasRealPlans)("D · undo across a restart: pending means scheduled", () => {
   it("skip, restart tomorrow, undo, skip again, undo by key -> bcg/A3 is pending AND scheduled", async () => {
     const t = await realApi();
     const first = await day(t, TODAY);
@@ -117,7 +119,7 @@ describe("D · undo across a restart: pending means scheduled", () => {
   });
 });
 
-describe("E · a days shift is never undone by a re-plan", () => {
+describe.skipIf(!hasRealPlans)("E · a days shift is never undone by a re-plan", () => {
   it("skip bcg/A2 at 09:00, shift +1 day, undo -> today stays off and A2 leads the next working day", async () => {
     const t = await realApi({ now: `${TODAY}T09:00:00+02:00` });
     const before = await day(t, TODAY);
@@ -187,7 +189,7 @@ describe("E · a days shift is never undone by a re-plan", () => {
   });
 });
 
-describe("F · regenerate {from: today}", () => {
+describe.skipIf(!hasRealPlans)("F · regenerate {from: today}", () => {
   const MIN_PART = 15;
 
   /** No hole: every item starts exactly when the one before it ends. */
@@ -273,7 +275,7 @@ describe("F · regenerate {from: today}", () => {
  * Second review round: the same "derive it from the plan" pattern in two more places, plus three
  * smaller notes. Each one is the critic's own repro.
  */
-describe("round 2 · days off, held sessions, holes, history and part labels", () => {
+describe.skipIf(!hasRealPlans)("round 2 · days off, held sessions, holes, history and part labels", () => {
   const PARIS_OFF = (date: string) => (date < "2026-10-25" ? "+02:00" : "+01:00");
   const at = (date: string, hm: string) => ms(`${date}T${hm}:00${PARIS_OFF(date)}`);
   const pending = (d: any) => d.items.filter((i: any) => i.kind === "task" && i.status === "pending");
@@ -397,7 +399,7 @@ describe("round 2 · days off, held sessions, holes, history and part labels", (
  * Third review round. Note 1 is a correction to docs/PLAN.md itself: a task closes only when every
  * minute of it is done, never because an item carried the last part label.
  */
-describe("round 3 · closing rule, validation order, days off, slot order", () => {
+describe.skipIf(!hasRealPlans)("round 3 · closing rule, validation order, days off, slot order", () => {
   const pendingOf = (d: any) => d.items.filter((i: any) => i.kind === "task" && i.status === "pending");
 
   it("1 · marking the LAST part of a split task done leaves the earlier minutes to do", async () => {

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasRealPlans, readRealPlanIfAny } from "./real-plans.ts";
 import { insertTask, renderPlanFile, updateMeta, updateTask } from "../src/index.ts";
 
 /**
@@ -8,9 +9,10 @@ import { insertTask, renderPlanFile, updateMeta, updateTask } from "../src/index
  * and the caller - over HTTP, usually Claude Code - is told the change landed. These tests exist
  * because `updateTask(text, uid, { durationMin: 150 })` used to return ok with the file untouched.
  */
-const BCG = readFileSync(resolve(import.meta.dirname, "../../../resources/bcg.md"), "utf8");
+// "" when the owner's plans are absent; the suite below is skipped then, so it is never used.
+const BCG = readRealPlanIfAny("bcg.md");
 
-describe("a field we do not have is rejected, never ignored", () => {
+describe.skipIf(!hasRealPlans)("a field we do not have is rejected, never ignored", () => {
   const cases: [string, object][] = [
     ["camelCase of a real field", { durationMin: 150 }],
     ["snake_case of a real field", { duration_min: "2h" }],

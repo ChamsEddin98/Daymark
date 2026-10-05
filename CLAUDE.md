@@ -115,6 +115,15 @@ Tests use vitest; the web UI uses Playwright (`npm test -w @planner/web`). Clock
 
 ## Task-file schema (summary; the full spec is in the README, "Task files")
 
+- `resources/` is **gitignored**: the owner's plan files are personal documents, so they live only on
+  the machine that runs the planner. Only `.gitkeep` is tracked, because the loader reports a missing
+  `resources/` as a parse error. `docs/example-task-file.md` holds the structure instead, and it sits
+  in `docs/` rather than `resources/` because anything there with a `schema:` line would be loaded
+  and scheduled. Tests that read the real plans (the surgical editor and the HTML conversion, which
+  only real hand-written documents can prove anything about) are guarded by `hasRealPlans` from
+  `packages/core/test/real-plans.ts`: they run where those files exist and skip visibly where they
+  do not, so a fresh clone is green.
+
 - Front matter:
   - `schema: planner/task-file@1`
   - `track`

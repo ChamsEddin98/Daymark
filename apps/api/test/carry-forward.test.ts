@@ -13,6 +13,8 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixedClock } from "@planner/store";
 import { createApi, type Api } from "../src/app.ts";
+// These build an API over the owner's own plan files, which are gitignored.
+import { hasRealPlans } from "../../../packages/core/test/real-plans.ts";
 import { cleanup, enc, notAuthorized, tempDir } from "./helpers.ts";
 
 const TZ = "Europe/Paris";
@@ -70,7 +72,7 @@ async function nextMorning(t: T, date: string): Promise<T> {
   return realApi(at(date), t.dir);
 }
 
-describe("a day nobody touched costs the plan a day, not the work", () => {
+describe.skipIf(!hasRealPlans)("a day nobody touched costs the plan a day, not the work", () => {
   it("every unfinished task from yesterday is on the plan again today", async () => {
     let t = await realApi(at(D1));
     const before = await uidsOn(t, D1);
@@ -146,7 +148,7 @@ describe("a day nobody touched costs the plan a day, not the work", () => {
   });
 });
 
-describe("skip still removes work for good", () => {
+describe.skipIf(!hasRealPlans)("skip still removes work for good", () => {
   it("a skipped one-off task does not come back the next day", async () => {
     let t = await realApi(at(D1));
     const first = (await uidsOn(t, D1)).find((u) => !u.endsWith("/DAILY"))!;

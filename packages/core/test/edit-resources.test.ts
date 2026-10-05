@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasRealPlans } from "./real-plans.ts";
 import {
   deleteTask,
   diff,
@@ -83,7 +84,8 @@ function spread(tasks: Task[]): Task[] {
   return out;
 }
 
-describe.each(NAMES)("%s", (name) => {
+// Guarded: these read the owner's own plan files, which are gitignored (see test/real-plans.ts).
+describe.skipIf(!hasRealPlans).each(NAMES)("%s", (name) => {
   const text = source(name);
   const path = `resources/${name}`;
   const file = parsed(text, path);
@@ -262,7 +264,7 @@ describe.each(NAMES)("%s", (name) => {
   });
 });
 
-describe("bcg.md, the awkward one", () => {
+describe.skipIf(!hasRealPlans)("bcg.md, the awkward one", () => {
   const path = "resources/bcg.md";
   const text = source("bcg.md");
   const file = parsed(text, path);

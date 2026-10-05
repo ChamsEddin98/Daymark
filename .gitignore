@@ -16,6 +16,15 @@ google-service-account*.json
 service-account*.json
 *.sa.json
 
+# The owner's own plans. These are personal documents - what someone is studying, which companies
+# they are preparing for, when - so they stay on the machine that runs the planner and out of the
+# repo, even a private one. The directory itself is kept (.gitkeep) because the loader reports a
+# missing resources/ as a parse error. docs/example-task-file.md carries the structure instead, and
+# it lives in docs/ on purpose: anything under resources/ with a `schema:` line would be loaded as a
+# real plan, and anything with ```task blocks but no schema line is reported as an error.
+resources/*
+!resources/.gitkeep
+
 # logs and test artefacts
 *.log
 test-results/

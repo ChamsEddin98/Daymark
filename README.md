@@ -227,24 +227,37 @@ Every task the planner can schedule comes from a Markdown file under `resources/
 Markdown is the source of truth. To add work, edit a file or drop in a new one. Nothing else
 needs to change.
 
-| File | Track | Kind | Tasks |
-|---|---|---|---|
-| `resources/bcg.md` | `bcg` | prep, priority 1 | 57 |
-| `resources/salesforce.md` | `salesforce` | prep, priority 2 | 39 |
-| `resources/anthropic.md` | `anthropic` | prep, priority 3 | 31 |
-| `resources/lessons.md` | `lessons` | lessons | 1 daily task (2h, 28 days) |
-| `resources/portfolio.md` | `portfolio` | portfolio | 1 daily task (1h) |
-| `resources/apply.md` | `apply` | recurring, `starts_after: bcg` | 1 daily task (30m) |
+> **`resources/` is gitignored, and deliberately so.** A plan file says what someone is studying,
+> which companies they are preparing for and when - personal detail that has no business in a repo,
+> even a private one. So the directory ships empty apart from a `.gitkeep`, and your plans stay on
+> the machine that runs the planner. Back them up like any other personal document; Git is not doing
+> it for you.
+>
+> **[docs/example-task-file.md](example-task-file.md) is the structure**, as a complete file you can
+> validate and copy. It lives in `docs/` rather than `resources/` on purpose: anything under
+> `resources/` carrying a `schema:` line is loaded as a real plan and gets scheduled.
 
-These three files were converted from the original HTML plans. The HTML files stay next to
-them for reference only. `tools/convert_html.py` is the one-shot converter, kept so the
-conversion can be audited. Do not re-run it: it overwrites hand edits.
+A plan typically looks like this - one file per track, the prep tracks ordered by `priority`, and a
+few daily blocks:
+
+| File | Track | Kind | Shape |
+|---|---|---|---|
+| `resources/<first>.md` | e.g. `bcg` | prep, priority 1 | a long list of one-off tasks |
+| `resources/<second>.md` | e.g. `salesforce` | prep, priority 2 | takes the prep slot when the first finishes |
+| `resources/lessons.md` | `lessons` | lessons | 1 daily task, `repeat: daily` + `occurrences` |
+| `resources/portfolio.md` | `portfolio` | portfolio | 1 daily task, no cap |
+| `resources/apply.md` | `apply` | recurring, `starts_after: <track>` | held back until that track is done |
+
+If you converted a plan from HTML, `tools/convert_html.py` is the one-shot converter, kept so the
+conversion can be audited. Do not re-run it: the Markdown is the source of truth now and re-running
+it overwrites hand edits.
 
 Validate every task file:
 
 ```sh
-npm run tasks:check            # all of resources/
-npm run tasks:check -- path/   # another folder
+npm run tasks:check                              # all of resources/
+npm run tasks:check -- path/                     # another folder
+npm run tasks:check -- docs/example-task-file.md # the worked example
 ```
 
 ### Task-file schema (`planner/task-file@1`)
