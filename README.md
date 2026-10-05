@@ -1,9 +1,34 @@
-# Daymark
+# Daymark — a local-first study planner that schedules your week and syncs it to Google Calendar
 
-A study-schedule service. It turns Markdown task files into a weekly day plan, syncs the plan
-to a dedicated Google Calendar, serves a local web UI for today, and fires desktop
-notifications at every task and rest boundary. It runs as its own processes. Claude Code is
-only a client of its HTTP API.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.13-5FA04E.svg)](https://nodejs.org/)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757.svg)](#use-from-claude-code)
+
+**Daymark** is a self-hosted **study planner** and **schedule generator**. You write what you want to
+study as plain **Markdown** task files; Daymark turns them into a timed **daily study schedule** with
+automatic **rest breaks**, keeps it in sync with a dedicated **Google Calendar**, serves a **local web
+UI** for today, and fires **desktop notifications** at every task and rest boundary.
+
+It runs as its own service, with no account and no cloud: your plan is **Markdown on your disk** and
+**SQLite** beside it. It also ships a **Claude Code plugin**, so you can run your week in plain
+language — but the planner works perfectly well without it.
+
+**What it does for you**
+
+- 📅 **Time-blocks your week automatically** — tasks in, a timed plan out, with a 10-minute break
+  between tasks and an hour off after every 4 hours of work
+- ⏰ **Active hours** — set when your day starts, when it must stop, and how many hours of work it
+  holds; the plan obeys the fence
+- 🔁 **Nothing is lost** — unfinished work carries itself to tomorrow, and a day you ignore costs
+  days, not work
+- 🗓️ **Two-way Google Calendar sync** — idempotent, with optional reminders that reach your phone
+- 🖥️ **A daily view built for one question** — what am I doing now, and what's next
+- 🔔 **Native desktop notifications** at every task and rest boundary
+- 🤖 **Claude Code plugin** — "what's next?", "mark A1 done", "shift today by an hour", "my day
+  starts at 10"
+- 📝 **Markdown stays the source of truth** — edits through the API rewrite your files surgically,
+  leaving your prose and formatting alone
 
 *A daymark is an unlit navigational beacon you fix your position by in daylight — which is what the
 daily view is for.*
@@ -304,12 +329,15 @@ dividing line is that anything surviving a `POST /reload` lives in the Markdown 
 would wipe (done, skipped, progress, days off, the pause) lives in SQLite. See
 [docs/API.md](docs/API.md), "Write-back".
 
-Install it from the local marketplace in `.claude-plugin/marketplace.json`. Run this at the repo root:
+The repo is its own plugin marketplace (`.claude-plugin/marketplace.json`), so installing is two
+commands from anywhere:
 
 ```sh
-claude plugin marketplace add ./
+claude plugin marketplace add ChamsEddin98/Daymark
 claude plugin install daymark@daymark-local
 ```
+
+From a checkout you already have, `claude plugin marketplace add ./` at the repo root does the same.
 
 Or load it for a single session without installing it:
 

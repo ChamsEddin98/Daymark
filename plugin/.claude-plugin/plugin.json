@@ -4,5 +4,24 @@
   "displayName": "Daymark",
   "description": "Drive Daymark, the local study-planner service (weekly plan, active hours, Markdown task-file write-back, Google Calendar sync, desktop notifications) through its local HTTP API (port 4317 by default; the skills find the actual port from .data/runtime.json, PLANNER_API_PORT or .env). The `planner` skill is a router; the planner-* skills own one functional area each.",
   "author": { "name": "ChamsEddin98" },
-  "keywords": ["daymark", "planner", "study", "schedule", "active-hours", "google-calendar", "markdown", "write-back"]
+  "homepage": "https://github.com/ChamsEddin98/Daymark",
+  "repository": "https://github.com/ChamsEddin98/Daymark",
+  "license": "MIT",
+  "keywords": [
+    "daymark",
+    "study-planner",
+    "study-schedule",
+    "planner",
+    "scheduler",
+    "time-blocking",
+    "google-calendar",
+    "calendar-sync",
+    "markdown",
+    "task-management",
+    "pomodoro",
+    "productivity",
+    "active-hours",
+    "self-hosted",
+    "local-first"
+  ]
 }
