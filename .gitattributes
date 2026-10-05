@@ -1,0 +1,19 @@
+# Check text files out with LF on every platform.
+#
+# This is not cosmetic. A SKILL.md checked out with CRLF put a `\r` at the end of every YAML
+# frontmatter line, and the plugin loader's YAML parser rejected the file - so the skill loaded with
+# *empty metadata*, silently, and only in someone else's clone. It validated here and failed there.
+# Normalising the checkout means what is published is what was tested.
+* text=auto eol=lf
+
+# Binary, never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.bundle binary

@@ -4,6 +4,20 @@ All notable changes to Daymark. The format follows [Keep a Changelog](https://ke
 and the versioning is [semantic](https://semver.org/): the public surface is the HTTP API in
 [docs/API.md](docs/API.md) and the task-file schema `planner/task-file@1`.
 
+## [1.0.1] — 2026-10-05
+
+### Fixed
+
+- **`planner-settings` loaded with no metadata in a fresh clone.** Its YAML frontmatter held
+  `onMissed: whether ...` inside an unquoted scalar; a colon followed by a space ends a YAML key, so
+  the parser rejected the block and the skill loaded with every frontmatter field silently dropped —
+  including the `description` the router matches on. It validated on the author's machine and failed
+  everywhere else, because Git checks text out with CRLF on Windows and the trailing `` is what
+  tipped the same text from tolerated to fatal. Caught by validating a clean `git clone` rather than
+  the working tree.
+- **`.gitattributes` now pins `eol=lf`**, so a checkout cannot differ from what was tested. This was
+  the real cause: the bug was invisible in the repo it was written in.
+
 ## [1.0.0] — 2026-10-05
 
 First release. Every part is built and the HTTP API is a documented, tested contract.
@@ -71,4 +85,5 @@ First release. Every part is built and the HTTP API is a documented, tested cont
   planner. [docs/example-task-file.md](docs/example-task-file.md) carries the structure.
 - Clocks are injectable (`PLANNER_NOW`, `PLANNER_CLOCK`) so a day can be replayed or compressed.
 
+[1.0.1]: https://github.com/ChamsEddin98/Daymark/releases/tag/v1.0.1
 [1.0.0]: https://github.com/ChamsEddin98/Daymark/releases/tag/v1.0.0

@@ -7,7 +7,7 @@
       "name": "daymark",
       "source": "./plugin",
       "description": "Drive Daymark, the local study-planner service, through its local HTTP API (port discovered at runtime).",
-      "version": "1.0.0"
+      "version": "1.0.1"
     }
   ]
 }
