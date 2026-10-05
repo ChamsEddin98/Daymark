@@ -1,6 +1,6 @@
 {
   "name": "daymark",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "license": "MIT",
   "description": "Daymark: a local study-schedule service. Markdown task files become a timed daily plan with fixed rest rules, synced to Google Calendar, shown in a local web UI, announced by desktop notifications.",
