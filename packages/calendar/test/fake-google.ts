@@ -146,6 +146,11 @@ export class FakeGoogle {
     return [...(this.calendars.get(calendarId)?.events.values() ?? [])].filter((e) => e.status === "confirmed");
   }
 
+  /** What a calendar is called, for the rename tests. */
+  calendarSummary(calendarId: string): string | undefined {
+    return this.calendars.get(calendarId)?.summary;
+  }
+
   /** Simulates the user deleting the calendar in the Google Calendar UI. */
   deleteCalendarExternally(calendarId: string) {
     const c = this.calendars.get(calendarId);
@@ -333,9 +338,19 @@ export class FakeGoogle {
     const cal = this.calendars.get(parts[1] ?? "");
     if (!cal || cal.deleted) return this.send(res, req, 404, apiError(404, "Not Found", "notFound"));
 
-    // GET/DELETE /calendars/{id}
+    // GET/PATCH/DELETE /calendars/{id}
     if (parts.length === 2) {
       if (method === "GET") return this.send(res, req, 200, this.calendarJson(cal));
+      // PATCH: how a calendar the planner owns gets renamed when the setting changes.
+      if (method === "PATCH") {
+        if (body.summary !== undefined) {
+          if (!body.summary) return this.send(res, req, 400, apiError(400, "Missing title.", "required"));
+          cal.summary = String(body.summary);
+        }
+        if (body.timeZone !== undefined) cal.timeZone = String(body.timeZone);
+        if (body.description !== undefined) cal.description = body.description as string | undefined;
+        return this.send(res, req, 200, this.calendarJson(cal));
+      }
       if (method === "DELETE") {
         cal.deleted = true;
         return this.send(res, req, 204);

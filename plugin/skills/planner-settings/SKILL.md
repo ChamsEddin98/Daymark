@@ -1,6 +1,6 @@
 ---
 name: planner-settings
-description: Read and change the owner's active hours in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop), dailyTaskMin (how many minutes of task time a day holds) and onMissed (whether a task whose time passed re-times the day or only notifies). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours", "stop moving my tasks around", "don't re-time my day automatically", "what did I miss today". Also owns calendarReminders, which decides whether Google Calendar notifies and how long before a task — use for "I don't get notifications on my phone", "remind me 10 minutes before each task", "the calendar never alerts me", "turn off the calendar reminders". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
+description: Read and change the owner's active hours and calendar settings in the study planner through the local service at http://127.0.0.1:4317 — GET /settings and PATCH /settings for dayStart (when the day may begin), dayEnd (the hard stop), dailyTaskMin (how many minutes of task time a day holds) and onMissed (whether a task whose time passed re-times the day or only notifies). Use for "my day starts at 10", "don't schedule anything after 6pm", "I want to study 10 hours a day", "I only have evenings", "set my working hours to 8am-8pm", "how many hours a day am I doing", "what are my active hours", "stop moving my tasks around", "don't re-time my day automatically", "what did I miss today". Also owns the calendar settings: calendarReminders, which decides whether Google Calendar notifies and how long before a task — use for "I don't get notifications on my phone", "remind me 10 minutes before each task", "the calendar never alerts me", "turn off the calendar reminders" — and calendarName, what the calendar is called, for "rename my calendar" or "call the calendar X". These are the owner's limits, applied to every day; the rest rules (10 min between tasks, 1 hour after every 4 hours) are not settable.
 ---
 
 # Planner · active hours
@@ -53,8 +53,8 @@ Invoke-RestMethod -Method Patch -Uri 'http://127.0.0.1:4317/settings' -ContentTy
 
 | Endpoint | Body | Effect |
 |---|---|---|
-| `GET /settings` | — | The hours, the defaults, **what the window actually grants**, and `calendarReminders`. |
-| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed, calendarReminders }` | Validates, stores, rebuilds today and the future, queues the calendar sync. `calendarReminders` rebuilds nothing. |
+| `GET /settings` | — | The hours, the defaults, **what the window actually grants**, `calendarReminders`, and `calendarName` (+ `calendarNameApplies`). |
+| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed, calendarReminders, calendarName }` | Validates, stores, rebuilds today and the future, queues the calendar sync. `calendarReminders` and `calendarName` rebuild nothing. |
 
 `PATCH` accepts `dryRun: true` in the body or `?dryRun=true`, which validates and writes nothing.
 `GET /health` carries `activeHours` as well, so one call tells you how the day is shaped.
@@ -110,6 +110,24 @@ What to tell them:
   stays silent after a sync, that is the thing to check — not this setting.
 - Prefer a number over `"inherit"` unless they say they have set up event notifications on that
   calendar themselves.
+
+## Calendar name
+
+`calendarName` is what the planner's calendar is called. Default `Daymark`; send `null` to restore
+it. Like the reminders it rebuilds nothing - `regenerated` is `[]` - and only queues a sync, which
+renames the **same** calendar in place and keeps every event.
+
+```sh
+curl -s -X PATCH http://127.0.0.1:4317/settings   -H "content-type: application/json" -d '{"calendarName":"My Study Plan"}'
+```
+
+Use it for "rename my calendar", "call the calendar X", "my calendar is called Daymark, change it".
+
+**Check `calendarNameApplies` before promising it worked.** When it is `false` the owner supplied
+the calendar through `CALENDAR_ID`: it is theirs, they name it in Google Calendar, and the
+`calendar.events` scope cannot rename it. The value is still stored - their credential may change
+later - but tell them plainly that the rename will not reach Google and that they should rename it in
+Google Calendar instead. Do not report it as done.
 
 ## The one thing to get right: the clock cost of work is stepped
 

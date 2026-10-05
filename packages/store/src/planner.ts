@@ -8,6 +8,7 @@
  */
 import {
   DEFAULT_ACTIVE_HOURS,
+  DEFAULT_CALENDAR_NAME,
   MAX_SHIFT_MS,
   MISSED_POLICIES,
   SLOT_RANK,
@@ -70,6 +71,10 @@ const META_RESUME_AT = "resume_at";
 const META_ACTIVE_HOURS = "active_hours";
 /** `off` | `inherit` | a whole number of minutes before the start. Absent = `off`. */
 const META_CALENDAR_REMINDERS = "calendar_reminders";
+/** What a calendar the planner creates is called. Absent = `DEFAULT_CALENDAR_NAME`. */
+const META_CALENDAR_NAME = "calendar_name";
+/** Google rejects a very long summary, and a name this long is unusable in the UI anyway. */
+const MAX_CALENDAR_NAME = 200;
 /** A reminder may be set up to four weeks ahead, which is Google's own limit. */
 const MAX_REMINDER_MIN = 40_320;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -346,6 +351,46 @@ export class PlanService {
       `calendarReminders must be "off", "inherit", or a whole number of minutes from 0 to ${MAX_REMINDER_MIN}; got ${JSON.stringify(value)}`,
       '"off" lets the daemon do the notifying, "inherit" follows the calendar\'s own notification settings, and a number is minutes before the start - the one that reaches a phone.',
     );
+  }
+
+  // ------------------------------------------------- calendar name
+
+  /**
+   * What the planner's calendar is called.
+   *
+   * It only reaches Google for a calendar the planner **owns** - one it created itself, in OAuth
+   * mode. A calendar the owner supplied through `CALENDAR_ID` is named by the owner in Google
+   * Calendar, and the `calendar.events` scope cannot even read a Calendar resource, let alone
+   * rename one. The setting is still stored in that case rather than refused, because the credential
+   * can change later and silently dropping it would be worse; the API reports whether it applies.
+   */
+  calendarName(): string {
+    const raw = this.store.getMeta(META_CALENDAR_NAME);
+    const name = raw?.trim();
+    return name ? name : DEFAULT_CALENDAR_NAME;
+  }
+
+  /** Validate without storing, so `?dryRun` runs the same check the real call runs. */
+  validateCalendarName(value: unknown): string {
+    const name = typeof value === "string" ? value.trim() : value;
+    if (typeof name !== "string" || name.length === 0 || name.length > MAX_CALENDAR_NAME)
+      throw new PlannerError(
+        "INVALID_INPUT",
+        `calendarName must be a non-empty string of at most ${MAX_CALENDAR_NAME} characters; got ${JSON.stringify(value)}`,
+        `This is what the calendar is called in Google Calendar. Send null to go back to "${DEFAULT_CALENDAR_NAME}".`,
+      );
+    // A newline would split the summary in Google's UI, and a tab is invisible but counts.
+    if (/[\r\n\t]/.test(name))
+      throw new PlannerError("INVALID_INPUT", "calendarName must be a single line", "Remove the line breaks and tabs.");
+    return name;
+  }
+
+  /** Validate and store it. `null` restores the default. Returns the new value and whether it changed. */
+  setCalendarName(value: unknown): { calendarName: string; changed: boolean } {
+    const next = value === null ? DEFAULT_CALENDAR_NAME : this.validateCalendarName(value);
+    const changed = next !== this.calendarName();
+    if (changed) this.store.setSetting(META_CALENDAR_NAME, next);
+    return { calendarName: next, changed };
   }
 
   /** Validate and store it. Returns the new value and whether it changed. */

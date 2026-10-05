@@ -1,5 +1,5 @@
 /**
- * `calendarReminders` over HTTP.
+ * The two calendar settings over HTTP: `calendarReminders` and `calendarName`.
  *
  * The mapping is proved in `packages/calendar/test/mapping.test.ts` and the patching in
  * `reconcile.test.ts`. What is tested here is the part neither can see: that the setting is durable,
@@ -131,6 +131,82 @@ describe("PATCH /settings { calendarReminders }", () => {
   });
 });
 
+/**
+ * `calendarName` sits on the same endpoint but describes the calendar, not the plan. The honest
+ * part matters most: it can only reach Google for a calendar the planner owns, so an owner-supplied
+ * calendar has to be told the setting will not apply rather than being left to assume it did.
+ */
+describe("PATCH /settings { calendarName }", () => {
+  it("defaults to Daymark and is reported as applying when the planner owns the calendar", async () => {
+    t = await makeApi();
+    const r = (await t.get("/settings")).body;
+    expect(r.calendarName).toBe("Daymark");
+    expect(r.calendarNameApplies).toBe(true);
+  });
+
+  it("stores a name and reads it back", async () => {
+    t = await makeApi();
+    const r = await t.patch("/settings", { calendarName: "My Study Plan" });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body).toMatchObject({ calendarName: "My Study Plan", changed: true, sync: "queued" });
+    expect((await t.get("/settings")).body.calendarName).toBe("My Study Plan");
+  });
+
+  it("trims, and null restores the default", async () => {
+    t = await makeApi();
+    expect((await t.patch("/settings", { calendarName: "  Padded  " })).body.calendarName).toBe("Padded");
+    expect((await t.patch("/settings", { calendarName: null })).body.calendarName).toBe("Daymark");
+  });
+
+  it("does not move the plan: a name is not a schedule", async () => {
+    t = await makeApi();
+    const before = (await t.get("/today")).body;
+    const r = await t.patch("/settings", { calendarName: "Renamed" });
+    expect(r.body.regenerated).toEqual([]);
+    expect((await t.get("/today")).body.items).toEqual(before.items);
+    // But a sync is queued, because the calendar itself has to be renamed.
+    expect(r.body.sync).toBe("queued");
+  });
+
+  it("refuses an empty, over-long or multi-line name", async () => {
+    t = await makeApi();
+    for (const bad of ["", "   ", "a".repeat(201), "two\nlines", "tab\there", 5, {}]) {
+      expectError(await t.patch("/settings", { calendarName: bad }), 400, "INVALID_INPUT");
+    }
+    expect((await t.get("/settings")).body.calendarName).toBe("Daymark");
+  });
+
+  it("reports changed: false when the name is already set", async () => {
+    t = await makeApi();
+    await t.patch("/settings", { calendarName: "Same" });
+    expect((await t.patch("/settings", { calendarName: "Same" })).body).toMatchObject({ changed: false, sync: "skipped" });
+  });
+
+  it("dryRun validates without storing", async () => {
+    t = await makeApi();
+    expect((await t.patch("/settings?dryRun=1", { calendarName: "Preview" })).body).toMatchObject({ calendarName: "Preview", dryRun: true });
+    expect((await t.get("/settings")).body.calendarName).toBe("Daymark");
+    expectError(await t.patch("/settings?dryRun=1", { calendarName: "" }), 400, "INVALID_INPUT");
+  });
+
+  it("can be set with the reminders and the hours in one call", async () => {
+    t = await makeApi();
+    const r = await t.patch("/settings", { calendarName: "All At Once", calendarReminders: 15, dayEnd: "21:00" });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body).toMatchObject({ calendarName: "All At Once", calendarReminders: 15 });
+    expect(r.body.activeHours.dayEnd).toBe("21:00");
+  });
+
+  /** The whole reason the flag exists: a setting the credential cannot apply must say so. */
+  it("says it does not apply to a calendar the owner supplied", async () => {
+    t = await makeApi({ calendarId: "owner-made@group.calendar.google.com" });
+    expect((await t.get("/settings")).body.calendarNameApplies).toBe(false);
+    // Still stored rather than refused - the credential can change later - but reported honestly.
+    const r = await t.patch("/settings", { calendarName: "Wishful" });
+    expect(r.body).toMatchObject({ calendarName: "Wishful", calendarNameApplies: false, changed: true });
+  });
+});
+
 describe("the setting reaches the calendar", () => {
   it("a sync after PATCH /settings writes the popup onto every event", async () => {
     const client = fakeClient(fake);
@@ -153,5 +229,23 @@ describe("the setting reaches the calendar", () => {
     // And it settles: the next sync has nothing to do.
     const third = await t.post("/sync");
     expect(third.body.patched + third.body.inserted + third.body.deleted).toBe(0);
+  });
+
+  /** End to end for the name: PATCH /settings renames the calendar the planner owns, in place. */
+  it("a sync after PATCH /settings renames the planner's own calendar, keeping its events", async () => {
+    const client = fakeClient(fake);
+    t = await makeApi({ calendarClient: () => client, calendarOptions: noRetry });
+
+    const first = await t.post("/sync");
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body.inserted).toBeGreaterThan(0);
+    expect(fake.calendarSummary(first.body.calendarId)).toBe("Daymark");
+
+    expect((await t.patch("/settings", { calendarName: "FDE Prep" })).status).toBe(200);
+    const second = await t.post("/sync");
+    expect(second.body.calendarId, "renamed in place, not replaced").toBe(first.body.calendarId);
+    expect(fake.calendarSummary(second.body.calendarId)).toBe("FDE Prep");
+    expect(fake.liveEvents(second.body.calendarId)).toHaveLength(first.body.inserted);
+    expect(second.body.inserted).toBe(0);
   });
 });

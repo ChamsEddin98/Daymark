@@ -115,6 +115,8 @@ export class SyncManager {
         ...(this.calendarId ? { calendarId: this.calendarId } : {}),
         stateGet: () => this.store.getCalendarId(),
         stateSet: (id) => this.store.setCalendarId(id),
+        // Only reaches Google for a calendar the planner owns; ignored when calendarId is set.
+        summary: this.service.calendarName(),
       }, { ...this.calendarOptions, reminders: this.service.calendarReminders() });
       const counts = { inserted: r.inserted, patched: r.patched, deleted: r.deleted, unchanged: r.unchanged };
       const failed = r.errors.length > 0;

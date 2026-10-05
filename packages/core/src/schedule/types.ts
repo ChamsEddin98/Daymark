@@ -123,6 +123,15 @@ export const DEFAULT_ACTIVE_HOURS: ActiveHours = {
 /** Longest day the fence allows: 24 h of clock. A budget above this could never be placed. */
 export const MAX_DAILY_TASK_MIN = 24 * 60;
 
+/**
+ * What a calendar the planner creates is called, before the owner renames it.
+ *
+ * It lives here because `packages/store` holds the setting and `packages/calendar` writes it to
+ * Google, neither depends on the other, and both must agree on the default - two copies of the
+ * string would drift the moment one changed.
+ */
+export const DEFAULT_CALENDAR_NAME = "Daymark";
+
 /** The units `POST /plan/shift` accepts. Whole numbers only. */
 export type ShiftUnit = "minutes" | "hours" | "days";
 

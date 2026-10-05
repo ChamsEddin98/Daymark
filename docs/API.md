@@ -40,7 +40,7 @@ Every error looks like this:
 | `GET /plans` | `{ plans: [{ track, path, title, kind, priority, tasks, startsAfter, defaultDurationMin }] }`. One row per task file. |
 | `GET /plans/:track` | One plan: its front matter, its `tasks` and its raw `markdown`. |
 | `GET /backups?track=` | `{ backups: [{ name, track, at, bytes, path }] }`, newest first. The snapshots the write-back takes. |
-| `GET /settings` | The owner's active hours and what they actually grant, plus the calendar reminder policy: `{ activeHours: { dayStart, dayEnd, dailyTaskMin, onMissed }, calendarReminders, defaults, timeZone, effective: { dailyTaskMin, boundBy, lastEnd } }` |
+| `GET /settings` | The owner's active hours and what they actually grant, plus the calendar settings: `{ activeHours: { dayStart, dayEnd, dailyTaskMin, onMissed }, calendarReminders, calendarName, calendarNameApplies, defaults, timeZone, effective: { dailyTaskMin, boundBy, lastEnd } }` |
 | `GET /calendar/events?from&to` | The events read back from Google: `[{ eventId, plannerKey, summary, start, end, sourceUrl }]` |
 | `GET /sync/status` | `{ authorized, calendarId, lastSyncAt, lastResult: { inserted, patched, deleted, unchanged }, pending, lastError }` |
 | `GET /notifications?limit=50` | The recent notifications the daemon fired: `[{ at, type, itemKey, title }]`. `type` is one of `task_start`, `task_end`, `rest_start`, `rest_end`, `resume` (a one-off "Now: …" toast when the daemon starts mid-item) or `missed` (a task whose slot went by while it was still pending). |
@@ -57,7 +57,7 @@ Every error looks like this:
 | `POST /plan/pause` | — | Freezes the plan at this instant, recorded to the millisecond. Nothing moves. Returns `{ paused: { since } }`. |
 | `POST /plan/resume` | — | Measures `now - since` in milliseconds and shifts the plan forward by exactly that, then clears the pause. Returns `{ pausedSec, moved, endOfDay, day }`. |
 | `POST /plan/regenerate` | `{ from?: date }` | Rebuilds the plan from the given date (default: tomorrow) from task files, status and progress. `from` = today rebuilds the rest of today too. The only call that may clear days off; it reports them in `clearedDaysOff`. |
-| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed, calendarReminders }` | The owner's active hours: when the day may start, when it must stop, and how much task time it holds. Validates, stores, rebuilds **today and the future**, queues a sync. `calendarReminders` (`"off"` \| `"inherit"` \| minutes) is accepted in the same call but rebuilds nothing - it only changes how the events announce themselves. Takes `dryRun`. Returns `{ activeHours, calendarReminders, regenerated, changed, sync }`. |
+| `PATCH /settings` | any subset of `{ dayStart, dayEnd, dailyTaskMin, onMissed, calendarReminders, calendarName }` | The owner's active hours: when the day may start, when it must stop, and how much task time it holds. Validates, stores, rebuilds **today and the future**, queues a sync. `calendarReminders` (`"off"` \| `"inherit"` \| minutes) is accepted in the same call but rebuilds nothing - it only changes how the events announce themselves. Takes `dryRun`. Returns `{ activeHours, calendarReminders, regenerated, changed, sync }`. |
 | `POST /reload` | — | Re-reads `resources/**/*.md`, then regenerates the future days. Returns `{ tasks, errors: [] }`, or a 422. |
 | `POST /sync` | `{ from?, to? }` | Syncs the window now (default: today up to the end of the horizon). Returns the sync result. Every mutation above also queues a sync on its own, debounced by 2 s. |
 
@@ -385,6 +385,20 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
   - Stored in SQLite (`meta.calendar_reminders`), read live on every sync, so the API and the daemon
     cannot sync with different policies. A stored value that no longer parses falls back to `"off"`
     rather than breaking every sync. Anything else is `400 INVALID_INPUT` with nothing stored.
+- **Calendar name** (`GET`/`PATCH /settings`, key `calendarName`). What the planner's calendar is
+  called. Default `Daymark` (`DEFAULT_CALENDAR_NAME` in `packages/core`, so the store that holds the
+  setting and the calendar package that writes it cannot disagree). `null` restores it.
+  - **It only reaches Google for a calendar the planner owns.** `ensureCalendar` creates with the
+    name, and renames **in place** (`calendars.patch`) when it differs - the same calendar id, every
+    event kept. A calendar supplied through `CALENDAR_ID` belongs to the owner, who names it in
+    Google Calendar; `calendar.events` cannot read or write a Calendar resource at all, so the
+    planner never touches it. The setting is still **stored** rather than refused, because the
+    credential can change later, and every answer carries `calendarNameApplies` so a setting that
+    cannot take effect never reads as success.
+  - Patched only on a real difference, so an unchanged name costs no write per sync.
+  - Like the reminders, it never moves the plan: `regenerated` is `[]` and only a sync is queued.
+  - Empty, whitespace-only, longer than 200 characters, or containing a newline or tab is
+    `400 INVALID_INPUT` with nothing stored. Leading and trailing spaces are trimmed.
 - `POST /reload` returns `{ tasks: number, files: number, skipped: string[], errors: [], regenerated }`.
 - **Write-back** (`POST`/`PATCH`/`DELETE` on `/plans` and `/tasks`, and `POST /backups/:name/restore`).
   All of it is implemented in `apps/api/src/taskfiles.ts` over the surgical editor in
@@ -481,7 +495,7 @@ These pin down shapes the tables above leave open. Extra fields may be added; no
     exists.
 - **SSE payloads.** `status`: `{ key, taskUid, date, status }` (by item) or `{ taskUid, date, status, keys }`
   (by uid). `plan`: `{ dates, reason }` with reason `status`, `shift`, `pause`, `resume`, `regenerate`,
-  `reload`, `rollover`, `settings` (the active hours or the calendar reminders changed) or `external` (a write by another
+  `reload`, `rollover`, `settings` (the active hours, the calendar reminders or the calendar name changed) or `external` (a write by another
   process, such as the daemon, seen by polling the store once a second). `pause` and `resume` also carry `paused` (the new state, `null` after a resume).
   `sync`: `{ ok, lastSyncAt, lastResult, lastError, pending, lastAttemptAt }`. `notification`:
   `{ at, type, itemKey, title }`, relayed from the store. The heartbeat is an SSE comment line.

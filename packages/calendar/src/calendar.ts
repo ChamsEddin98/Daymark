@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { CalendarApiError } from "./errors.ts";
+import { DEFAULT_CALENDAR_NAME } from "@planner/core";
 import { call, seg, type CalendarOptions, type RequestClient } from "./http.ts";
 
 export interface CalendarState {
@@ -23,7 +24,14 @@ export interface EnsureCalendarInput extends CalendarState {
    * means the id is wrong or the sharing was removed, and saying so is the only useful answer.
    */
   calendarId?: string;
-  /** Default "Daymark". */
+  /**
+   * What the calendar is called. Default `DEFAULT_CALENDAR_NAME`.
+   *
+   * It is used when the planner creates a calendar, and - for a calendar the planner **owns** - to
+   * rename it when the owner changes the setting. It is ignored for a calendar given by
+   * `calendarId`: that one belongs to the owner, who names it in Google Calendar themselves, and
+   * the `calendar.events` scope cannot read or write a Calendar resource at all.
+   */
   summary?: string;
   /** IANA time zone for the calendar, e.g. "Africa/Tunis". */
   timeZone: string;
@@ -54,6 +62,7 @@ export async function ensureCalendar(
     if (stored !== input.calendarId) await input.stateSet(input.calendarId);
     return input.calendarId;
   }
+  const want = input.summary ?? DEFAULT_CALENDAR_NAME;
   const stored = await input.stateGet();
   if (stored) {
     const res = await call<CalendarResource>(
@@ -61,7 +70,13 @@ export async function ensureCalendar(
       { method: "GET", path: `/calendars/${seg(stored)}` },
       { ...opts, okStatuses: [404, 410] },
     );
-    if (res.status < 300 && res.data?.id) return res.data.id;
+    if (res.status < 300 && res.data?.id) {
+      // The planner owns this calendar, so the name setting is allowed to reach it. Patched only on
+      // a real difference: a PATCH on every sync would be a write per sync for no change.
+      if (res.data.summary !== want)
+        await call(client, { method: "PATCH", path: `/calendars/${seg(res.data.id)}`, data: { summary: want } }, opts);
+      return res.data.id;
+    }
   }
   const created = await call<CalendarResource>(
     client,
@@ -69,7 +84,7 @@ export async function ensureCalendar(
       method: "POST",
       path: "/calendars",
       data: {
-        summary: input.summary ?? "Daymark",
+        summary: want,
         timeZone: input.timeZone,
         description: input.description ?? "Managed by the study planner. Events here are rewritten on every sync.",
       },

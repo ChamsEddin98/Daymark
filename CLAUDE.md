@@ -73,6 +73,15 @@ Tests use vitest; the web UI uses Playwright (`npm test -w @planner/web`). Clock
   only), `"inherit"` sets `useDefault`. It is part of the event body and therefore of `plannerHash`,
   which is what makes a change patch the events that already exist instead of only new ones. Read
   live on every sync, like the active hours, because the API and the daemon hold separate services.
+- **`calendarName`** (`meta.calendar_name`, default `DEFAULT_CALENDAR_NAME` in `packages/core` -
+  defined there because `packages/store` holds the setting and `packages/calendar` writes it, neither
+  depends on the other, and two copies of the string would drift). Also on `/settings`, also not a
+  scheduling input. `ensureCalendar` creates with it and renames **in place** when it differs, so the
+  calendar id and every event survive a rename; it patches only on a real difference. It applies
+  **only to a calendar the planner owns**: one supplied via `CALENDAR_ID` is the owner's, and
+  `calendar.events` cannot touch a Calendar resource. It is still stored in that case, because the
+  credential can change, and the API reports `calendarNameApplies` so a setting that cannot take
+  effect never reads as success.
 - **Unfinished work carries itself forward.** The rollover deletes pending items on past dates and
   re-places the work at the front of the next day. A daily session is held only when it is **acted
   on** (done or skipped), never because its date went by, so an ignored day slides a capped series

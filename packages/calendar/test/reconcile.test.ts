@@ -339,6 +339,77 @@ describe("ensureCalendar / syncPlan", () => {
     expect(stored).toBe(id3);
   });
 
+  /**
+   * The calendar name setting. It reaches Google only for a calendar the planner owns, which is
+   * this path: created with the name, and renamed in place when the owner changes it - without
+   * making a second calendar, which would strand every event in the first.
+   */
+  describe("the calendar's name", () => {
+    const stateFor = (store: { id?: string }) => ({
+      timeZone: TZ,
+      stateGet: () => store.id,
+      stateSet: (id: string) => {
+        store.id = id;
+      },
+    });
+
+    it("defaults to Daymark when no name is given", async () => {
+      const store: { id?: string } = {};
+      const id = await ensureCalendar(client, stateFor(store));
+      expect(fake.calendarSummary(id)).toBe("Daymark");
+    });
+
+    it("creates the calendar with the name it is given", async () => {
+      const store: { id?: string } = {};
+      const id = await ensureCalendar(client, { ...stateFor(store), summary: "My Study Plan" });
+      expect(fake.calendarSummary(id)).toBe("My Study Plan");
+    });
+
+    it("renames the same calendar when the name changes, and never makes a second one", async () => {
+      const store: { id?: string } = {};
+      const id = await ensureCalendar(client, { ...stateFor(store), summary: "First Name" });
+      expect(fake.calendarSummary(id)).toBe("First Name");
+
+      const again = await ensureCalendar(client, { ...stateFor(store), summary: "Second Name" });
+      expect(again, "the same calendar, renamed - not a new one").toBe(id);
+      expect(fake.calendarSummary(id)).toBe("Second Name");
+      expect(store.id).toBe(id);
+    });
+
+    it("writes nothing when the name is unchanged, so a sync is not a write", async () => {
+      const store: { id?: string } = {};
+      const input = { ...stateFor(store), summary: "Steady" };
+      const id = await ensureCalendar(client, input);
+      fake.resetLog();
+      await ensureCalendar(client, input);
+      expect(fake.requests.filter((q) => q.method === "PATCH"), "no PATCH on an unchanged name").toEqual([]);
+      expect(fake.calendarSummary(id)).toBe("Steady");
+    });
+
+    it("is ignored for a calendar the owner supplied, which the planner must not rename", async () => {
+      const ownerMade = fake.addCalendar("owner-made@group.calendar.google.com");
+      const before = fake.calendarSummary(ownerMade);
+      const store: { id?: string } = {};
+      const id = await ensureCalendar(client, { ...stateFor(store), calendarId: ownerMade, summary: "Planner's idea of a name" });
+      expect(id).toBe(ownerMade);
+      expect(fake.calendarSummary(ownerMade), "the owner's calendar keeps its own name").toBe(before);
+      // And nothing was read or written on the Calendar resource: `calendar.events` cannot.
+      expect(fake.requests.filter((q) => /^\/calendars\/[^/]+$/.test(q.path))).toEqual([]);
+    });
+
+    it("a renamed calendar keeps its events", async () => {
+      const store: { id?: string } = {};
+      const base = { ...stateFor(store), items: makeItems(3), window: WINDOW };
+      const first = await syncPlan(client, { ...base, summary: "Before" }, { retry: noSleep });
+      expect(first.inserted).toBe(3);
+      const second = await syncPlan(client, { ...base, summary: "After" }, { retry: noSleep });
+      expect(second.calendarId).toBe(first.calendarId);
+      expect(fake.calendarSummary(second.calendarId)).toBe("After");
+      expect(fake.liveEvents(second.calendarId)).toHaveLength(3);
+      expect(second.inserted).toBe(0);
+    });
+  });
+
   it("syncPlan recreates a deleted calendar and repopulates it", async () => {
     let stored: string | undefined;
     const input = {

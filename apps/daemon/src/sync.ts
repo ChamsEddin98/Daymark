@@ -112,6 +112,8 @@ export class SyncRetrier {
           ...(this.o.calendarId ? { calendarId: this.o.calendarId } : {}),
           stateGet: () => store.getCalendarId(),
           stateSet: (id) => store.setCalendarId(id),
+          // Only reaches Google for a calendar the planner owns; ignored when calendarId is set.
+          summary: service.calendarName(),
         },
         { ...(this.o.calendarOptions ?? {}), reminders: service.calendarReminders() },
       );

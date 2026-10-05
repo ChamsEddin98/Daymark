@@ -175,6 +175,26 @@ A few things that are easy to get wrong:
 - **For the phone you still need the Google Calendar app** signed in to the account the calendar
   belongs to, with notifications allowed by the OS.
 
+## Naming the calendar
+
+What the planner's calendar is called:
+
+```sh
+curl -s -X PATCH http://127.0.0.1:4317/settings   -H "content-type: application/json" -d '{"calendarName":"My Study Plan"}'
+```
+
+It defaults to `Daymark`, and `null` puts it back. Changing it renames the **same** calendar in
+place on the next sync, keeping every event - it never makes a second one.
+
+**It only applies to a calendar the planner owns**, which means the OAuth path, where the planner
+created the calendar itself. If you supplied the calendar through `CALENDAR_ID` it is yours, you
+name it in Google Calendar, and the planner cannot rename it - the `calendar.events` scope cannot
+read or write a Calendar resource at all. The setting is still stored in that case, because your
+credential can change later, but `GET /settings` reports `calendarNameApplies: false` so nothing
+pretends it worked.
+
+A name is not a schedule, so this regenerates nothing; it only queues the sync.
+
 ## Use from Claude Code
 
 The repo ships a Claude Code plugin in `plugin/`. Claude Code is only a client, so the service must

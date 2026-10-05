@@ -8,7 +8,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { CalendarApiError, NotAuthorizedError, authMode, loadClient, type ReconcileOptions } from "@planner/calendar";
 import { addDays, daysBetween, type ParseIssue } from "@planner/core";
-import { DEFAULT_ACTIVE_HOURS } from "@planner/core";
+import { DEFAULT_ACTIVE_HOURS, DEFAULT_CALENDAR_NAME } from "@planner/core";
 import {
   NOTIFICATION_TYPES,
   PlanService,
@@ -406,6 +406,14 @@ export async function createApi(opts: ApiOptions = {}): Promise<Api> {
        * nothing about the plan - only how the calendar announces it.
        */
       calendarReminders: service.calendarReminders(),
+      /**
+       * What the calendar is called, and whether that can actually take effect. A setting the
+       * credential cannot apply is reported as such rather than looking like it worked: with a
+       * calendar the owner supplied, they name it in Google Calendar and `calendar.events` cannot
+       * even read a Calendar resource.
+       */
+      calendarName: service.calendarName(),
+      calendarNameApplies: !calendarId,
       effective: {
         /** Task minutes the coming full days actually hold; `null` until a day is materialized. */
         dailyTaskMin: full.length ? Math.max(...full.map(taskMin)) : null,
@@ -551,17 +559,25 @@ export async function createApi(opts: ApiOptions = {}): Promise<Api> {
     const { input, dryRun } = writeBack(req);
     // `calendarReminders` is handled apart from the active hours: it never moves the plan, so it
     // regenerates nothing and only queues a sync. The two may be sent in one call.
-    const { calendarReminders: wantReminders, ...hoursPatch } = input;
+    // `calendarName` is the same: it renames the calendar, it does not touch the plan.
+    const { calendarReminders: wantReminders, calendarName: wantName, ...hoursPatch } = input;
     const touchesHours = Object.keys(hoursPatch).length > 0;
+    // Reported on every answer, because a stored name that the credential cannot apply must never
+    // read as success. `calendarId` set means the owner supplied the calendar and names it himself.
+    const nameApplies = !calendarId;
 
     if (dryRun) {
       // Validated, nothing stored: the same checks the real call makes, so a preview that passes
       // cannot be followed by a commit that fails.
       const hours = touchesHours ? service.validateActiveHours(hoursPatch as never) : service.activeHours();
       const reminders = wantReminders === undefined ? service.calendarReminders() : service.validateCalendarReminders(wantReminders);
+      const name =
+        wantName === undefined ? service.calendarName() : wantName === null ? DEFAULT_CALENDAR_NAME : service.validateCalendarName(wantName);
       return {
         activeHours: hours,
         calendarReminders: reminders,
+        calendarName: name,
+        calendarNameApplies: nameApplies,
         regenerated: touchesHours ? service.wouldReplan(service.today()) : [],
         dryRun: true,
         sync: "skipped",
@@ -575,15 +591,23 @@ export async function createApi(opts: ApiOptions = {}): Promise<Api> {
       reminders = r.calendarReminders;
       changed ||= r.changed;
     }
+    let name = service.calendarName();
+    if (wantName !== undefined) {
+      const r = service.setCalendarName(wantName);
+      name = r.calendarName;
+      changed ||= r.changed;
+    }
     const { hours, changed: hoursChanged } = touchesHours ? service.setActiveHours(hoursPatch as never) : { hours: service.activeHours(), changed: false };
     changed ||= hoursChanged;
-    if (!changed) return { activeHours: hours, calendarReminders: reminders, regenerated: [], changed: false, sync: "skipped" };
+    const answer = { activeHours: hours, calendarReminders: reminders, calendarName: name, calendarNameApplies: nameApplies };
+    if (!changed) return { ...answer, regenerated: [], changed: false, sync: "skipped" };
 
     // Only the hours move the plan. A reminder change is part of the event body, so the hash shifts
     // and the next sync patches every event once - which is how it reaches events that already exist.
+    // A name change touches the calendar itself, which `ensureCalendar` does on the next sync.
     const regenerated = hoursChanged ? service.replan(service.today()) : [];
-    mutated(regenerated, "settings", { calendarReminders: reminders });
-    return { activeHours: hours, calendarReminders: reminders, regenerated, changed: true, sync: "queued" };
+    mutated(regenerated, "settings", { calendarReminders: reminders, calendarName: name });
+    return { ...answer, regenerated, changed: true, sync: "queued" };
   });
 
   const shiftBody = (req: FastifyRequest) => {
